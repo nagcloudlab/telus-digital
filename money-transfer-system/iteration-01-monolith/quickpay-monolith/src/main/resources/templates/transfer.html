@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transfer Money - QuickPay</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+
+<body>
+    <nav>
+        <div class="container">
+            <h1>QuickPay Money Transfer</h1>
+            <div class="nav-links">
+                <!-- Account Switcher -->
+                <div class="account-switcher">
+                    <label for="accountSelect">Account:</label>
+                    <select id="accountSelect" onchange="switchAccount()">
+                        <option value="ACC123456" th:selected="${accountNumber == 'ACC123456'}">Ramesh (ACC123456)
+                        </option>
+                        <option value="ACC987654" th:selected="${accountNumber == 'ACC987654'}">Priya (ACC987654)
+                        </option>
+                        <option value="ACC555777" th:selected="${accountNumber == 'ACC555777'}">Amit (ACC555777)
+                        </option>
+                    </select>
+                </div>
+                <a th:href="@{/dashboard(account=${accountNumber})}">Dashboard</a>
+                <a th:href="@{/transfer(account=${accountNumber})}" class="active">Transfer Money</a>
+                <a th:href="@{/history(account=${accountNumber})}">History</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="container">
+            <div class="transfer-page">
+                <h2>Transfer Money</h2>
+
+                <div class="current-balance" id="currentBalance">
+                    <div class="loading">Loading balance...</div>
+                </div>
+
+                <form id="transferForm" class="transfer-form">
+                    <div class="form-group">
+                        <label for="fromAccount">From Account</label>
+                        <input type="text" id="fromAccount" name="fromAccount" th:value="${accountNumber}" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="toAccount">To Account Number</label>
+                        <select id="toAccount" name="toAccount" required>
+                            <option value="">Select recipient account</option>
+                            <option value="ACC123456" th:if="${accountNumber != 'ACC123456'}">Ramesh - ACC123456
+                            </option>
+                            <option value="ACC987654" th:if="${accountNumber != 'ACC987654'}">Priya - ACC987654</option>
+                            <option value="ACC555777" th:if="${accountNumber != 'ACC555777'}">Amit - ACC555777</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="amount">Amount (₹)</label>
+                        <input type="number" id="amount" name="amount" required min="1" step="0.01"
+                            placeholder="Enter amount">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description (Optional)</label>
+                        <textarea id="description" name="description" rows="3"
+                            placeholder="Enter description or note"></textarea>
+                    </div>
+
+                    <div id="errorMessage" class="error-message" style="display: none;"></div>
+                    <div id="successMessage" class="success-message" style="display: none;"></div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Transfer Money</button>
+                        <button type="reset" class="btn btn-secondary">Clear</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 QuickPay Digital Solutions. Iteration 1 - Monolithic Application (Simplified Demo)</p>
+        </div>
+    </footer>
+
+    <script th:inline="javascript">
+        const accountNumber = /*[[${accountNumber}]]*/ 'ACC123456';
+
+        // Account switcher
+        function switchAccount() {
+            const selectedAccount = document.getElementById('accountSelect').value;
+            window.location.href = `/transfer?account=${selectedAccount}`;
+        }
+
+        // Load balance
+        async function loadBalance() {
+            try {
+                const response = await fetch(`/api/accounts/${accountNumber}/balance`);
+                const data = await response.json();
+
+                document.getElementById('currentBalance').innerHTML = `
+                    <div class="balance-display">
+                        <label>Current Balance:</label>
+                        <span class="balance">₹${parseFloat(data.balance).toLocaleString('en-IN')}</span>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading balance:', error);
+            }
+        }
+
+        // Handle transfer form
+        document.getElementById('transferForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const form = e.target;
+            const errorDiv = document.getElementById('errorMessage');
+            const successDiv = document.getElementById('successMessage');
+            const submitBtn = form.querySelector('button[type="submit"]');
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+
+            const transferData = {
+                fromAccountNumber: document.getElementById('fromAccount').value,
+                toAccountNumber: document.getElementById('toAccount').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                description: document.getElementById('description').value
+            };
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Processing...';
+
+            try {
+                const response = await fetch('/api/transfers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(transferData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    successDiv.innerHTML = `
+                        <strong>Success!</strong> ${data.message}<br>
+                        Transaction ID: ${data.transactionId}
+                    `;
+                    successDiv.style.display = 'block';
+                    form.reset();
+                    document.getElementById('fromAccount').value = accountNumber;
+
+                    setTimeout(() => loadBalance(), 1000);
+                } else {
+                    errorDiv.textContent = data.message || 'Transfer failed';
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Transfer failed. Please try again.';
+                errorDiv.style.display = 'block';
+                console.error('Transfer error:', error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Transfer Money';
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', loadBalance);
+    </script>
+</body>
+
+</html>

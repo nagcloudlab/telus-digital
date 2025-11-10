@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} ?: 'QuickPay'">QuickPay</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+
+<body>
+    <nav th:if="${showNav}">
+        <div class="container">
+            <h1>QuickPay Money Transfer</h1>
+            <div class="nav-links">
+                <a th:href="@{/dashboard(account=${accountNumber})}">Dashboard</a>
+                <a th:href="@{/transfer(account=${accountNumber})}">Transfer Money</a>
+                <a th:href="@{/history(account=${accountNumber})}">History</a>
+                <a th:href="@{/login}">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="container">
+            <div th:replace="${content}"></div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 QuickPay Digital Solutions. Iteration 1 - Monolithic Application</p>
+        </div>
+    </footer>
+
+    <script th:src="@{/js/main.js}"></script>
+</body>
+
+</html>

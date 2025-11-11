@@ -54,6 +54,9 @@ public class TransferService {
         fromAccount.debit(totalAmount);
         toAccount.credit(request.getAmount());
 
+        // Track daily transferred (transfer amount only, not fee)
+        fromAccount.addToDailyTransferred(request.getAmount());
+
         // 6. Update accounts
         accountService.update(fromAccount);
         accountService.update(toAccount);
@@ -114,9 +117,11 @@ public class TransferService {
     }
 
     private String generateTransferReference() {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSSS");
         String timestamp = LocalDateTime.now().format(formatter);
-        return "TXN-" + timestamp;
+        // Add random component to ensure uniqueness
+        int random = (int) (Math.random() * 1000);
+        return String.format("TXN-%s-%03d", timestamp, random);
     }
 
     private TransferResponse buildResponse(Transfer transfer, BigDecimal fromBalanceBefore,

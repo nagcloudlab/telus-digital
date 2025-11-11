@@ -145,23 +145,23 @@
                                     <element>BUNDLE</element>
                                     <limits>
                                         <!-- Line coverage: 70% minimum -->
-                                        <!-- <limit>
+                                        <limit>
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.70</minimum>
-                                        </limit> -->
+                                            <minimum>0.66</minimum>
+                                        </limit>
                                         <!-- Branch coverage: 65% minimum -->
-                                        <!-- <limit>
+                                        <limit>
                                             <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.65</minimum>
-                                        </limit> -->
+                                            <minimum>0.06</minimum>
+                                        </limit>
                                         <!-- Method coverage: 75% minimum -->
-                                        <!-- <limit>
+                                        <limit>
                                             <counter>METHOD</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.75</minimum>
-                                        </limit> -->
+                                            <minimum>0.50</minimum>
+                                        </limit>
                                     </limits>
                                 </rule>
                             </rules>

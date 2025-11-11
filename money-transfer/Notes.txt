@@ -1,0 +1,31 @@
+
+
+----------------------------
+Automated Unit Tests
+----------------------------
+
+for 'java' based projects
+
+testing frameworks : Junit
+assertion library  : hamcrest
+mocking framework  : mockito
+test runner        : surefire
+test coverage      : jacoco
+
+for 'python' based projects
+
+testing frameworks : pytest
+assertion library  : built-in assertions
+mocking framework  : unittest.mock
+test runner        : pytest
+test coverage      : coverage.py    
+
+for 'javascript' based projects
+
+testing frameworks : jasmine, jest
+assertion library  : built-in assertions
+mocking framework  : sinon.js, jest mocks
+test runner        : karma, jest
+test coverage      : istanbul, jest coverage
+
+

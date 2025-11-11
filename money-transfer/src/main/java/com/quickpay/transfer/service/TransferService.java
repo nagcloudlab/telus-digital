@@ -51,7 +51,7 @@ public class TransferService {
         fraudDetectionService.checkFraud(request);
 
         // 5. Execute transfer
-        fromAccount.debit(request.getAmount());
+        fromAccount.debit(request.getAmount().add(fee));
         toAccount.credit(request.getAmount());
 
         // 6. Update accounts

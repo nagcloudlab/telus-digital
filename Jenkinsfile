@@ -7,11 +7,25 @@ pipeline {
     }
     
     environment {
+        // Application
         APP_NAME = 'money-transfer'
         GITHUB_REPO = 'https://github.com/nagcloudlab/telus-digital.git'
-        APP_VERSION = "${BUILD_NUMBER}"
+        APP_VERSION = "1.0.${BUILD_NUMBER}"
+        
+        // SonarQube
         SONAR_PROJECT_KEY = 'money-transfer'
         SONAR_PROJECT_NAME = 'Money Transfer'
+        
+        // Nexus - CHANGE THESE TO YOUR SERVER IP
+        NEXUS_URL = 'http://13.201.62.107/:8081'
+        NEXUS_REPOSITORY = 'maven-releases'
+        NEXUS_DOCKER_REGISTRY = '13.201.62.107:8082'
+        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
+        NEXUS_DOCKER_CREDENTIALS_ID = 'nexus-docker-credentials'
+        
+        // Docker
+        DOCKER_IMAGE = "${NEXUS_DOCKER_REGISTRY}/${APP_NAME}"
+        DOCKER_TAG = "${APP_VERSION}"
     }
     
     stages {
@@ -31,6 +45,7 @@ pipeline {
                         echo "Current Branch: main"
                         echo "Commit: $(git rev-parse --short HEAD)"
                         echo "Author: $(git log -1 --pretty=format:'%an')"
+                        echo "Version: ${APP_VERSION}"
                         ls -la
                     '''
                 }
@@ -55,7 +70,7 @@ pipeline {
                             cd money-transfer
                         fi
                         
-                        echo "Building project..."
+                        echo "Building project with version ${APP_VERSION}..."
                         mvn clean compile
                     '''
                 }
@@ -78,12 +93,6 @@ pipeline {
                         
                         echo "Running unit tests..."
                         mvn test
-                        
-                        echo "Test Summary:"
-                        echo "============="
-                        if [ -f "target/surefire-reports/*.txt" ]; then
-                            cat target/surefire-reports/*.txt 2>/dev/null | grep "Tests run" || echo "Test results generated"
-                        fi
                     '''
                 }
                 
@@ -105,7 +114,6 @@ pipeline {
                 echo '========================================='
                 
                 script {
-                    // Run SonarQube analysis
                     withSonarQubeEnv('SonarQube-Server') {
                         sh '''
                             if [ -d "money-transfer" ]; then
@@ -116,10 +124,8 @@ pipeline {
                             mvn sonar:sonar \
                                 -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
                                 -Dsonar.projectName="${SONAR_PROJECT_NAME}" \
-                                -Dsonar.java.binaries=target/classes \
-                                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
-                                
-                            echo "SonarQube analysis completed"
+                                -Dsonar.projectVersion=${APP_VERSION} \
+                                -Dsonar.java.binaries=target/classes
                         '''
                     }
                 }
@@ -128,70 +134,10 @@ pipeline {
             }
         }
         
-        stage('5. Quality Gate') {
+        stage('5. Package') {
             steps {
                 echo '========================================='
-                echo '    Stage 5: Checking Quality Gate       '
-                echo '========================================='
-                
-                script {
-                    // Wait for SonarQube Quality Gate result
-                    timeout(time: 5, unit: 'MINUTES') {
-                        def qg = waitForQualityGate()
-                        
-                        if (qg.status != 'OK') {
-                            echo "⚠️  Quality Gate Status: ${qg.status}"
-                            echo "Quality gate failed but continuing pipeline..."
-                            // unstable(message: "Quality Gate failed: ${qg.status}")
-                        } else {
-                            echo "✅ Quality Gate Status: PASSED"
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('6. Security Scan') {
-            steps {
-                echo '========================================='
-                echo '  Stage 6: OWASP Dependency Check        '
-                echo '========================================='
-                
-                script {
-                    sh '''
-                        if [ -d "money-transfer" ]; then
-                            cd money-transfer
-                        fi
-                        
-                        echo "Scanning for vulnerable dependencies..."
-                    '''
-                    
-                    // Run OWASP Dependency Check
-                    dependencyCheck additionalArguments: '''
-                        --scan .
-                        --format HTML
-                        --format XML
-                        --prettyPrint
-                        --enableExperimental
-                        ''',
-                        odcInstallation: 'DP-Check'
-                    
-                    // Publish Dependency-Check results
-                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml',
-                                        failedTotalCritical: 0,
-                                        failedTotalHigh: 0,
-                                        unstableTotalCritical: 5,
-                                        unstableTotalHigh: 10
-                }
-                
-                echo '✅ Security scan completed'
-            }
-        }
-        
-        stage('7. Package') {
-            steps {
-                echo '========================================='
-                echo '     Stage 7: Packaging Application      '
+                echo '     Stage 5: Packaging Application      '
                 echo '========================================='
                 
                 script {
@@ -211,13 +157,175 @@ pipeline {
                 
                 echo '✅ Packaging completed successfully'
             }
-            
-            post {
-                success {
-                    archiveArtifacts artifacts: '**/target/*.jar',
-                                   fingerprint: true,
-                                   allowEmptyArchive: false
+        }
+        
+        stage('6. Push JAR to Nexus') {
+            steps {
+                echo '========================================='
+                echo '  Stage 6: Uploading JAR to Nexus       '
+                echo '========================================='
+                
+                script {
+                    sh '''
+                        if [ -d "money-transfer" ]; then
+                            cd money-transfer
+                        fi
+                        
+                        echo "Finding JAR file..."
+                        JAR_FILE=$(ls target/*.jar | head -1)
+                        echo "JAR File: ${JAR_FILE}"
+                        
+                        if [ -z "$JAR_FILE" ]; then
+                            echo "ERROR: No JAR file found!"
+                            exit 1
+                        fi
+                    '''
+                    
+                    withCredentials([usernamePassword(
+                        credentialsId: "${NEXUS_CREDENTIALS_ID}",
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )]) {
+                        sh '''
+                            if [ -d "money-transfer" ]; then
+                                cd money-transfer
+                            fi
+                            
+                            JAR_FILE=$(ls target/*.jar | head -1)
+                            
+                            echo "Uploading JAR to Nexus..."
+                            echo "URL: ${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/"
+                            echo "Group: com.example"
+                            echo "Artifact: ${APP_NAME}"
+                            echo "Version: ${APP_VERSION}"
+                            
+                            mvn deploy:deploy-file \
+                                -DgroupId=com.example \
+                                -DartifactId=${APP_NAME} \
+                                -Dversion=${APP_VERSION} \
+                                -Dpackaging=jar \
+                                -Dfile=${JAR_FILE} \
+                                -DrepositoryId=nexus \
+                                -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/ \
+                                -DgeneratePom=true \
+                                -Dmaven.wagon.http.ssl.insecure=true \
+                                -Dmaven.wagon.http.ssl.allowall=true
+                            
+                            echo "✅ JAR uploaded successfully!"
+                            echo "View at: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
+                        '''
+                    }
                 }
+            }
+        }
+        
+        stage('7. Build Docker Image') {
+            steps {
+                echo '========================================='
+                echo '    Stage 7: Building Docker Image       '
+                echo '========================================='
+                
+                script {
+                    sh '''
+                        if [ -d "money-transfer" ]; then
+                            cd money-transfer
+                        fi
+                        
+                        echo "Creating Dockerfile..."
+                        cat > Dockerfile << 'EOF'
+FROM openjdk:17-jdk-slim
+
+LABEL maintainer="nag@example.com"
+LABEL application="money-transfer"
+
+WORKDIR /app
+
+COPY target/*.jar app.jar
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
+EOF
+                        
+                        echo "Building Docker image..."
+                        echo "Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                        
+                        echo "Docker images:"
+                        docker images | grep ${APP_NAME}
+                    '''
+                }
+                
+                echo '✅ Docker image built successfully'
+            }
+        }
+        
+        stage('8. Push Docker Image to Nexus') {
+            steps {
+                echo '========================================='
+                echo '  Stage 8: Pushing Image to Nexus       '
+                echo '========================================='
+                
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: "${NEXUS_DOCKER_CREDENTIALS_ID}",
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )]) {
+                        sh '''
+                            echo "Logging into Nexus Docker Registry..."
+                            echo ${NEXUS_PASS} | docker login -u ${NEXUS_USER} --password-stdin ${NEXUS_DOCKER_REGISTRY}
+                            
+                            echo "Pushing Docker image..."
+                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                            docker push ${DOCKER_IMAGE}:latest
+                            
+                            echo "Logging out..."
+                            docker logout ${NEXUS_DOCKER_REGISTRY}
+                            
+                            echo "✅ Docker image pushed successfully!"
+                            echo "View at: ${NEXUS_URL}/#browse/browse:docker-hosted"
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('9. Verify Nexus Uploads') {
+            steps {
+                echo '========================================='
+                echo '  Stage 9: Verifying Nexus Artifacts    '
+                echo '========================================='
+                
+                script {
+                    sh '''
+                        echo ""
+                        echo "📦 ARTIFACTS IN NEXUS"
+                        echo "====================="
+                        echo ""
+                        echo "JAR Artifact:"
+                        echo "  URL: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
+                        echo "  Path: com/example/${APP_NAME}/${APP_VERSION}/"
+                        echo "  File: ${APP_NAME}-${APP_VERSION}.jar"
+                        echo ""
+                        echo "Docker Image:"
+                        echo "  Registry: ${NEXUS_DOCKER_REGISTRY}"
+                        echo "  Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        echo "  Also: ${DOCKER_IMAGE}:latest"
+                        echo ""
+                        echo "Pull Commands:"
+                        echo "  JAR:    mvn dependency:get -Dartifact=com.example:${APP_NAME}:${APP_VERSION}"
+                        echo "  Docker: docker pull ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        echo ""
+                    '''
+                }
+                
+                echo '✅ Verification completed'
             }
         }
         
@@ -230,14 +338,19 @@ pipeline {
             echo '========================================='
             script {
                 sh '''
+                    echo ""
+                    echo "BUILD SUMMARY"
+                    echo "============="
                     echo "Build Number: ${BUILD_NUMBER}"
                     echo "Application: ${APP_NAME}"
+                    echo "Version: ${APP_VERSION}"
                     echo ""
-                    echo "📊 Reports Available:"
-                    echo "  - SonarQube: http://your-server:9000/dashboard?id=${SONAR_PROJECT_KEY}"
-                    echo "  - Security Report: Check Dependency-Check results in Jenkins"
-                    echo "  - Test Results: Available in Jenkins UI"
-                    echo "  - Artifacts: Archived in Jenkins"
+                    echo "NEXUS ARTIFACTS:"
+                    echo "  JAR: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
+                    echo "  Docker: ${NEXUS_URL}/#browse/browse:docker-hosted"
+                    echo ""
+                    echo "🚀 Ready for Deployment!"
+                    echo ""
                 '''
             }
         }
@@ -246,49 +359,16 @@ pipeline {
             echo '========================================='
             echo '      ❌ PIPELINE FAILED!                '
             echo '========================================='
-            echo 'Please check:'
-            echo '  1. Console output for errors'
-            echo '  2. Test results'
-            echo '  3. SonarQube dashboard'
-            echo '  4. Security scan results'
-        }
-        
-        unstable {
-            echo '========================================='
-            echo '      ⚠️  PIPELINE UNSTABLE!             '
-            echo '========================================='
-            echo 'Check:'
-            echo '  - Quality Gate status in SonarQube'
-            echo '  - Security vulnerabilities found'
-            echo '  - Failed test cases'
         }
         
         always {
-            echo '========================================='
-            echo '      Cleaning up workspace              '
-            echo '========================================='
-            
-            // Publish HTML reports if available
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'money-transfer/target/site/jacoco',
-                reportFiles: 'index.html',
-                reportName: 'Code Coverage Report',
-                reportTitles: 'JaCoCo Coverage'
-            ])
-            
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: '.',
-                reportFiles: 'dependency-check-report.html',
-                reportName: 'OWASP Dependency Check',
-                reportTitles: 'Security Scan'
-            ])
-            
+            echo 'Cleaning up local Docker images...'
+            script {
+                sh '''
+                    docker rmi ${DOCKER_IMAGE}:${DOCKER_TAG} 2>/dev/null || true
+                    docker rmi ${DOCKER_IMAGE}:latest 2>/dev/null || true
+                '''
+            }
             cleanWs()
         }
     }

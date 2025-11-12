@@ -84,7 +84,7 @@ jobs:
             --upload-file $JAR_FILE \
             ${{ env.NEXUS_URL }}/repository/${{ env.NEXUS_REPOSITORY }}/com/example/${{ env.APP_NAME }}/$VERSION/${{ env.APP_NAME }}-$VERSION.jar
           
-          echo "✅ JAR uploaded to Nexus!"
+          echo "JAR uploaded to Nexus!"
       
       - name: 8. Build Docker Image
         run: |
@@ -94,24 +94,20 @@ jobs:
           
           VERSION="1.0.${{ github.run_number }}"
           
-          # Check if Dockerfile exists, if not create it
           if [ ! -f "Dockerfile" ]; then
-            cat > Dockerfile << 'EOF'
-FROM openjdk:17-jdk-slim
-LABEL maintainer="nag@example.com"
-LABEL application="money-transfer"
-WORKDIR /app
-COPY target/*.jar app.jar
-EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
+            cat > Dockerfile <<DOCKERFILE
+          FROM openjdk:17-jdk-slim
+          LABEL maintainer="nag@example.com"
+          LABEL application="money-transfer"
+          WORKDIR /app
+          COPY target/*.jar app.jar
+          EXPOSE 8080
+          ENTRYPOINT ["java", "-jar", "app.jar"]
+          DOCKERFILE
           fi
           
           docker build -t ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:$VERSION .
-          docker tag ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:$VERSION \
-                     ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:latest
+          docker tag ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:$VERSION ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:latest
       
       - name: 9. Push Docker Image to Nexus
         env:
@@ -127,18 +123,18 @@ EOF
           
           docker logout ${{ env.NEXUS_DOCKER_REGISTRY }}
           
-          echo "✅ Docker images pushed to Nexus!"
+          echo "Docker images pushed to Nexus!"
       
       - name: 10. Summary
         run: |
           echo "========================================="
-          echo "  ✅ PIPELINE COMPLETED SUCCESSFULLY!"
+          echo "  PIPELINE COMPLETED SUCCESSFULLY!"
           echo "========================================="
           echo ""
           echo "Build Number: ${{ github.run_number }}"
           echo "Version: 1.0.${{ github.run_number }}"
           echo ""
-          echo "📊 SonarQube: ${{ env.SONAR_HOST_URL }}/dashboard?id=money-transfer"
-          echo "📦 Nexus: ${{ env.NEXUS_URL }}"
-          echo "🐳 Docker: ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:1.0.${{ github.run_number }}"
+          echo "SonarQube: ${{ env.SONAR_HOST_URL }}/dashboard?id=money-transfer"
+          echo "Nexus: ${{ env.NEXUS_URL }}"
+          echo "Docker: ${{ env.NEXUS_DOCKER_REGISTRY }}/${{ env.APP_NAME }}:1.0.${{ github.run_number }}"
           echo ""

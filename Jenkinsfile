@@ -18,7 +18,7 @@ pipeline {
         
         // Nexus - CHANGE THESE TO YOUR SERVER IP
         NEXUS_URL = 'http://13.201.62.107:8081'
-        NEXUS_REPOSITORY = 'maven-releases'
+        NEXUS_REPOSITORY = 'maven-releases1'
         NEXUS_DOCKER_REGISTRY = '13.201.62.107:8082'
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
         NEXUS_DOCKER_CREDENTIALS_ID = 'nexus-docker-credentials'

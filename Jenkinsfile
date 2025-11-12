@@ -197,64 +197,72 @@ pipeline {
         }
         
         stage('7. Push JAR to Nexus') {
-            steps {
-                echo '========================================='
-                echo '  Stage 7: Uploading JAR to Nexus       '
-                echo '========================================='
+    steps {
+        echo '========================================='
+        echo '  Stage 7: Uploading JAR to Nexus       '
+        echo '========================================='
+        
+        script {
+            sh '''
+                if [ -d "money-transfer" ]; then
+                    cd money-transfer
+                fi
                 
-                script {
-                    sh '''
-                        if [ -d "money-transfer" ]; then
-                            cd money-transfer
-                        fi
-                        
-                        echo "Finding JAR file..."
-                        JAR_FILE=$(ls target/*.jar | head -1)
-                        echo "JAR File: ${JAR_FILE}"
-                        
-                        if [ -z "$JAR_FILE" ]; then
-                            echo "ERROR: No JAR file found!"
-                            exit 1
-                        fi
-                    '''
+                echo "Finding JAR file..."
+                JAR_FILE=$(ls target/*.jar | head -1)
+                echo "JAR File: ${JAR_FILE}"
+                
+                if [ -z "$JAR_FILE" ]; then
+                    echo "ERROR: No JAR file found!"
+                    exit 1
+                fi
+            '''
+            
+            withCredentials([usernamePassword(
+                credentialsId: "${NEXUS_CREDENTIALS_ID}",
+                usernameVariable: 'NEXUS_USER',
+                passwordVariable: 'NEXUS_PASS'
+            )]) {
+                sh '''
+                    if [ -d "money-transfer" ]; then
+                        cd money-transfer
+                    fi
                     
-                    withCredentials([usernamePassword(
-                        credentialsId: "${NEXUS_CREDENTIALS_ID}",
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )]) {
-                        sh '''
-                            if [ -d "money-transfer" ]; then
-                                cd money-transfer
-                            fi
-                            
-                            JAR_FILE=$(ls target/*.jar | head -1)
-                            
-                            echo "Uploading JAR to Nexus..."
-                            echo "URL: ${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/"
-                            echo "Group: com.example"
-                            echo "Artifact: ${APP_NAME}"
-                            echo "Version: ${APP_VERSION}"
-                            
-                            mvn deploy:deploy-file \
-                                -DgroupId=com.example \
-                                -DartifactId=${APP_NAME} \
-                                -Dversion=${APP_VERSION} \
-                                -Dpackaging=jar \
-                                -Dfile=${JAR_FILE} \
-                                -DrepositoryId=nexus \
-                                -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/ \
-                                -DgeneratePom=true \
-                                -Dmaven.wagon.http.ssl.insecure=true \
-                                -Dmaven.wagon.http.ssl.allowall=true
-                            
-                            echo "✅ JAR uploaded successfully!"
-                            echo "View at: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
-                        '''
-                    }
-                }
+                    JAR_FILE=$(ls target/*.jar | head -1)
+                    
+                    echo "Uploading JAR to Nexus..."
+                    echo "URL: ${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/"
+                    echo "User: ${NEXUS_USER}"
+                    
+                    # Create directory structure and upload
+                    curl -v -u ${NEXUS_USER}:${NEXUS_PASS} \
+                        --upload-file ${JAR_FILE} \
+                        ${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/com/example/${APP_NAME}/${APP_VERSION}/${APP_NAME}-${APP_VERSION}.jar
+                    
+                    # Upload POM
+                    cat > pom-upload.xml << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>${APP_NAME}</artifactId>
+    <version>${APP_VERSION}</version>
+    <packaging>jar</packaging>
+</project>
+EOF
+                    
+                    curl -v -u ${NEXUS_USER}:${NEXUS_PASS} \
+                        --upload-file pom-upload.xml \
+                        ${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/com/example/${APP_NAME}/${APP_VERSION}/${APP_NAME}-${APP_VERSION}.pom
+                    
+                    echo ""
+                    echo "✅ JAR uploaded successfully!"
+                    echo "View at: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
+                '''
             }
         }
+    }
+}
         
         stage('8. Build Docker Image') {
             steps {

@@ -69,11 +69,14 @@ public class Account {
     // Business methods
     public void debit(BigDecimal amount) {
         this.balance = this.balance.subtract(amount);
-        this.dailyTransferred = this.dailyTransferred.add(amount);
     }
 
     public void credit(BigDecimal amount) {
         this.balance = this.balance.add(amount);
+    }
+
+    public void addToDailyTransferred(BigDecimal amount) {
+        this.dailyTransferred = this.dailyTransferred.add(amount);
     }
 
     public boolean hasSufficientBalance(BigDecimal amount) {

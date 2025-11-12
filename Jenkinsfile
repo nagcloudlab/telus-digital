@@ -17,7 +17,7 @@ pipeline {
         SONAR_PROJECT_NAME = 'Money Transfer'
         
         // Nexus - CHANGE THESE TO YOUR SERVER IP
-        NEXUS_URL = 'http://13.201.62.107/:8081'
+        NEXUS_URL = 'http://13.201.62.107:8081'
         NEXUS_REPOSITORY = 'maven-releases'
         NEXUS_DOCKER_REGISTRY = '13.201.62.107:8082'
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
@@ -134,10 +134,47 @@ pipeline {
             }
         }
         
-        stage('5. Package') {
+        stage('5. Security Scan') {
             steps {
                 echo '========================================='
-                echo '     Stage 5: Packaging Application      '
+                echo '  Stage 5: OWASP Dependency Check        '
+                echo '========================================='
+                
+                script {
+                    sh '''
+                        if [ -d "money-transfer" ]; then
+                            cd money-transfer
+                        fi
+                        
+                        echo "Scanning for vulnerable dependencies..."
+                    '''
+                    
+                    // Run OWASP Dependency Check
+                    dependencyCheck additionalArguments: '''
+                        --scan .
+                        --format HTML
+                        --format XML
+                        --prettyPrint
+                        --enableExperimental
+                        ''',
+                        odcInstallation: 'DP-Check'
+                    
+                    // Publish Dependency-Check results
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml',
+                                        failedTotalCritical: 0,
+                                        failedTotalHigh: 0,
+                                        unstableTotalCritical: 5,
+                                        unstableTotalHigh: 10
+                }
+                
+                echo '✅ Security scan completed'
+            }
+        }
+        
+        stage('6. Package') {
+            steps {
+                echo '========================================='
+                echo '     Stage 6: Packaging Application      '
                 echo '========================================='
                 
                 script {
@@ -159,10 +196,10 @@ pipeline {
             }
         }
         
-        stage('6. Push JAR to Nexus') {
+        stage('7. Push JAR to Nexus') {
             steps {
                 echo '========================================='
-                echo '  Stage 6: Uploading JAR to Nexus       '
+                echo '  Stage 7: Uploading JAR to Nexus       '
                 echo '========================================='
                 
                 script {
@@ -219,10 +256,10 @@ pipeline {
             }
         }
         
-        stage('7. Build Docker Image') {
+        stage('8. Build Docker Image') {
             steps {
                 echo '========================================='
-                echo '    Stage 7: Building Docker Image       '
+                echo '    Stage 8: Building Docker Image       '
                 echo '========================================='
                 
                 script {
@@ -265,10 +302,10 @@ EOF
             }
         }
         
-        stage('8. Push Docker Image to Nexus') {
+        stage('9. Push Docker Image to Nexus') {
             steps {
                 echo '========================================='
-                echo '  Stage 8: Pushing Image to Nexus       '
+                echo '  Stage 9: Pushing Image to Nexus       '
                 echo '========================================='
                 
                 script {
@@ -296,10 +333,10 @@ EOF
             }
         }
         
-        stage('9. Verify Nexus Uploads') {
+        stage('10. Verify Nexus Uploads') {
             steps {
                 echo '========================================='
-                echo '  Stage 9: Verifying Nexus Artifacts    '
+                echo '  Stage 10: Verifying Nexus Artifacts   '
                 echo '========================================='
                 
                 script {
@@ -349,6 +386,11 @@ EOF
                     echo "  JAR: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
                     echo "  Docker: ${NEXUS_URL}/#browse/browse:docker-hosted"
                     echo ""
+                    echo "REPORTS:"
+                    echo "  - SonarQube: http://your-server:9000/dashboard?id=${SONAR_PROJECT_KEY}"
+                    echo "  - Security Scan: Check OWASP Dependency-Check report in Jenkins"
+                    echo "  - Test Results: Available in Jenkins UI"
+                    echo ""
                     echo "🚀 Ready for Deployment!"
                     echo ""
                 '''
@@ -359,9 +401,25 @@ EOF
             echo '========================================='
             echo '      ❌ PIPELINE FAILED!                '
             echo '========================================='
+            echo 'Check:'
+            echo '  1. Console output for errors'
+            echo '  2. Test results'
+            echo '  3. Security vulnerabilities'
+            echo '  4. Nexus connectivity'
         }
         
         always {
+            echo 'Publishing security report...'
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: '.',
+                reportFiles: 'dependency-check-report.html',
+                reportName: 'OWASP Dependency Check',
+                reportTitles: 'Security Scan'
+            ])
+            
             echo 'Cleaning up local Docker images...'
             script {
                 sh '''

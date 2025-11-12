@@ -98,4 +98,5 @@ jobs:
           echo ""
           echo "SonarQube: ${{ env.SONAR_HOST_URL }}/dashboard?id=money-transfer"
           echo "Nexus: ${{ env.NEXUS_URL }}"
+          echo "Hello World! This is a complete CI/CD pipeline."
           echo ""

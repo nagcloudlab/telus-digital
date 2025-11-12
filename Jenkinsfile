@@ -1,4 +1,5 @@
 pipeline {
+    
     agent any
     
     tools {
@@ -22,7 +23,6 @@ pipeline {
         NEXUS_DOCKER_REGISTRY = '13.201.62.107:8082'
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
         NEXUS_DOCKER_CREDENTIALS_ID = 'nexus-docker-credentials'
-        
         // Docker
         DOCKER_IMAGE = "${NEXUS_DOCKER_REGISTRY}/${APP_NAME}"
         DOCKER_TAG = "${APP_VERSION}"
@@ -98,7 +98,6 @@ pipeline {
                 
                 echo '✅ Tests completed successfully'
             }
-            
             post {
                 always {
                     junit allowEmptyResults: true, 
@@ -239,17 +238,17 @@ pipeline {
                         --upload-file ${JAR_FILE} \
                         ${NEXUS_URL}/repository/${NEXUS_REPOSITORY}/com/example/${APP_NAME}/${APP_VERSION}/${APP_NAME}-${APP_VERSION}.jar
                     
-                    # Upload POM
-                    cat > pom-upload.xml << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<project>
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>com.example</groupId>
-    <artifactId>${APP_NAME}</artifactId>
-    <version>${APP_VERSION}</version>
-    <packaging>jar</packaging>
-</project>
-EOF
+                        # Upload POM
+                        cat > pom-upload.xml << EOF
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <project>
+                            <modelVersion>4.0.0</modelVersion>
+                            <groupId>com.example</groupId>
+                            <artifactId>${APP_NAME}</artifactId>
+                            <version>${APP_VERSION}</version>
+                            <packaging>jar</packaging>
+                        </project>
+                        EOF
                     
                     curl -v -u ${NEXUS_USER}:${NEXUS_PASS} \
                         --upload-file pom-upload.xml \
@@ -257,89 +256,14 @@ EOF
                     
                     echo ""
                     echo "✅ JAR uploaded successfully!"
-                    echo "View at: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
-                '''
-            }
-        }
-    }
-}
-        
-        stage('8. Build Docker Image') {
-            steps {
-                echo '========================================='
-                echo '    Stage 8: Building Docker Image       '
-                echo '========================================='
-                
-                script {
-                    sh '''
-                        if [ -d "money-transfer" ]; then
-                            cd money-transfer
-                        fi
-                        
-                        echo "Creating Dockerfile..."
-                        cat > Dockerfile << 'EOF'
-FROM openjdk:17-jdk-slim
-
-LABEL maintainer="nag@example.com"
-LABEL application="money-transfer"
-
-WORKDIR /app
-
-COPY target/*.jar app.jar
-
-EXPOSE 8080
-
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-                        
-                        echo "Building Docker image..."
-                        echo "Image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
-                        
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                        
-                        echo "Docker images:"
-                        docker images | grep ${APP_NAME}
-                    '''
-                }
-                
-                echo '✅ Docker image built successfully'
-            }
-        }
-        
-        stage('9. Push Docker Image to Nexus') {
-            steps {
-                echo '========================================='
-                echo '  Stage 9: Pushing Image to Nexus       '
-                echo '========================================='
-                
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: "${NEXUS_DOCKER_CREDENTIALS_ID}",
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )]) {
-                        sh '''
-                            echo "Logging into Nexus Docker Registry..."
-                            echo ${NEXUS_PASS} | docker login -u ${NEXUS_USER} --password-stdin ${NEXUS_DOCKER_REGISTRY}
-                            
-                            echo "Pushing Docker image..."
-                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                            docker push ${DOCKER_IMAGE}:latest
-                            
-                            echo "Logging out..."
-                            docker logout ${NEXUS_DOCKER_REGISTRY}
-                            
-                            echo "✅ Docker image pushed successfully!"
-                            echo "View at: ${NEXUS_URL}/#browse/browse:docker-hosted"
+                            echo "View at: ${NEXUS_URL}/#browse/browse:${NEXUS_REPOSITORY}"
                         '''
                     }
                 }
             }
         }
+        
+        
         
         stage('10. Verify Nexus Uploads') {
             steps {

@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./money-transfer    # ← ADD THIS!
+        working-directory: ./money-transfer
     
     steps:
     - name: 📥 Checkout code
@@ -33,22 +33,25 @@ jobs:
         distribution: 'temurin'
         cache: maven
     
+    - name: 🏗️ Compile Code First
+      run: mvn clean compile -B
+    
     - name: 🔍 Run Checkstyle
       run: |
         echo "Running Checkstyle for code style violations..."
-        mvn checkstyle:checkstyle || true
+        mvn checkstyle:checkstyle -B || true
       continue-on-error: true
     
     - name: 🐛 Run SpotBugs
       run: |
         echo "Running SpotBugs for potential bugs..."
-        mvn com.github.spotbugs:spotbugs-maven-plugin:4.8.3.0:check || true
+        mvn spotbugs:spotbugs -B || true
       continue-on-error: true
     
     - name: 📊 Run PMD
       run: |
         echo "Running PMD for code quality issues..."
-        mvn pmd:pmd pmd:cpd || true
+        mvn pmd:pmd -B || true
       continue-on-error: true
     
     - name: 📤 Upload Analysis Reports
@@ -57,7 +60,8 @@ jobs:
       with:
         name: static-analysis-reports
         path: |
-          money-transfer/target/checkstyle-result.xml
-          money-transfer/target/spotbugsXml.xml
-          money-transfer/target/pmd.xml
+          money-transfer/target/site/checkstyle.html
+          money-transfer/target/site/pmd.html
+          money-transfer/target/site/cpd.html
+          money-transfer/target/spotbugs.html
         retention-days: 30

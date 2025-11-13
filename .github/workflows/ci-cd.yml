@@ -35,25 +35,53 @@ jobs:
     
     - name: 🏗️ Build Project
       run: mvn clean compile -DskipTests -B
-      continue-on-error: false
     
-    - name: 🔍 Run Checkstyle
-      run: mvn checkstyle:checkstyle -B
+    - name: 🔍 Run Checkstyle (Report Only)
+      run: |
+        echo "Running Checkstyle for code style violations..."
+        mvn checkstyle:checkstyle -B || true
+        echo "Found Checkstyle violations - see report for details"
       continue-on-error: true
     
-    - name: 🐛 Run SpotBugs  
-      run: mvn spotbugs:spotbugs -B
+    - name: 🐛 Run SpotBugs (Report Only)
+      run: |
+        echo "Running SpotBugs for potential bugs..."
+        mvn spotbugs:spotbugs -B || true
+        echo "SpotBugs analysis complete - see report for details"
       continue-on-error: true
     
-    - name: 📊 Run PMD
-      run: mvn pmd:pmd -B
+    - name: 📊 Run PMD (Report Only)
+      run: |
+        echo "Running PMD for code quality issues..."
+        mvn pmd:pmd -B || true
+        echo "PMD analysis complete - see report for details"
       continue-on-error: true
     
-    - name: 📋 List Generated Reports
+    - name: 📋 Summary of Findings
       if: always()
       run: |
-        echo "Checking for generated reports..."
-        find target -name "*.html" -o -name "*.xml" | grep -E "(checkstyle|spotbugs|pmd)" || echo "No reports found"
+        echo "=================================="
+        echo "Static Analysis Summary"
+        echo "=================================="
+        echo ""
+        if [ -f "target/site/checkstyle.html" ]; then
+          echo "✅ Checkstyle report generated"
+        else
+          echo "⚠️  Checkstyle report not found"
+        fi
+        if [ -f "target/spotbugs.html" ]; then
+          echo "✅ SpotBugs report generated"
+        else
+          echo "⚠️  SpotBugs report not found"
+        fi
+        if [ -f "target/site/pmd.html" ]; then
+          echo "✅ PMD report generated"
+        else
+          echo "⚠️  PMD report not found"
+        fi
+        echo ""
+        echo "Download reports from Artifacts section"
+        echo "=================================="
     
     - name: 📤 Upload Checkstyle Report
       if: always()

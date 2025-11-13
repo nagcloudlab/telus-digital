@@ -16,6 +16,9 @@ jobs:
   static-analysis:
     name: 🔍 Static Code Analysis
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./money-transfer    # ← ADD THIS!
     
     steps:
     - name: 📥 Checkout code
@@ -54,7 +57,7 @@ jobs:
       with:
         name: static-analysis-reports
         path: |
-          target/checkstyle-result.xml
-          target/spotbugsXml.xml
-          target/pmd.xml
-        retention-days: 30  
+          money-transfer/target/checkstyle-result.xml
+          money-transfer/target/spotbugsXml.xml
+          money-transfer/target/pmd.xml
+        retention-days: 30

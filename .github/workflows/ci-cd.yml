@@ -24,7 +24,7 @@ jobs:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history for better analysis
+        fetch-depth: 0
     
     - name: ☕ Set up JDK
       uses: actions/setup-java@v4
@@ -33,35 +33,48 @@ jobs:
         distribution: 'temurin'
         cache: maven
     
-    - name: 🏗️ Compile Code First
-      run: mvn clean compile -B
+    - name: 🏗️ Build Project
+      run: mvn clean compile -DskipTests -B
+      continue-on-error: false
     
     - name: 🔍 Run Checkstyle
-      run: |
-        echo "Running Checkstyle for code style violations..."
-        mvn checkstyle:checkstyle -B || true
+      run: mvn checkstyle:checkstyle -B
       continue-on-error: true
     
-    - name: 🐛 Run SpotBugs
-      run: |
-        echo "Running SpotBugs for potential bugs..."
-        mvn spotbugs:spotbugs -B || true
+    - name: 🐛 Run SpotBugs  
+      run: mvn spotbugs:spotbugs -B
       continue-on-error: true
     
     - name: 📊 Run PMD
-      run: |
-        echo "Running PMD for code quality issues..."
-        mvn pmd:pmd -B || true
+      run: mvn pmd:pmd -B
       continue-on-error: true
     
-    - name: 📤 Upload Analysis Reports
-      uses: actions/upload-artifact@v4
+    - name: 📋 List Generated Reports
       if: always()
+      run: |
+        echo "Checking for generated reports..."
+        find target -name "*.html" -o -name "*.xml" | grep -E "(checkstyle|spotbugs|pmd)" || echo "No reports found"
+    
+    - name: 📤 Upload Checkstyle Report
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
-        name: static-analysis-reports
-        path: |
-          money-transfer/target/site/checkstyle.html
-          money-transfer/target/site/pmd.html
-          money-transfer/target/site/cpd.html
-          money-transfer/target/spotbugs.html
-        retention-days: 30
+        name: checkstyle-report
+        path: money-transfer/target/site/checkstyle.html
+        if-no-files-found: warn
+    
+    - name: 📤 Upload SpotBugs Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: spotbugs-report
+        path: money-transfer/target/spotbugs.html
+        if-no-files-found: warn
+    
+    - name: 📤 Upload PMD Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pmd-report
+        path: money-transfer/target/site/pmd.html
+        if-no-files-found: warn

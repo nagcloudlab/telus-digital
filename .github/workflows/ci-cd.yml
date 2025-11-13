@@ -47,7 +47,12 @@ jobs:
       run: |
         echo "Running SpotBugs for potential bugs..."
         mvn spotbugs:spotbugs -B || true
-        echo "SpotBugs analysis complete - see report for details"
+        # Check if report was generated
+        if [ -f "target/spotbugs.html" ]; then
+          echo "✅ SpotBugs report generated"
+        else
+          echo "ℹ️ SpotBugs report not generated (may need compiled classes)"
+        fi
       continue-on-error: true
     
     - name: 📊 Run PMD (Report Only)

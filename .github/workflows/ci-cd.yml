@@ -1,4 +1,4 @@
-name: Complete CI/CD Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -6,97 +6,105 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      destroy:
+        description: 'Destroy infrastructure after tests'
+        required: false
+        default: false
+        type: boolean
 
 env:
   APP_NAME: money-transfer
   JAVA_VERSION: '17'
-  SONAR_HOST_URL: http://13.126.34.38:9000
-  NEXUS_URL: http://13.126.34.38:8081
-  NEXUS_REPOSITORY: maven-releases
-  NEXUS_DOCKER_REGISTRY: 13.126.34.38:8082
+  AWS_REGION: ap-south-1
+  TF_VERSION: 1.6.0
 
 jobs:
-  build:
+
+  # ============================================
+  # STAGE 1: BUILD & TEST
+  # ============================================
+
+   build:
     name: Build and Test
     runs-on: ubuntu-latest
-    
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact-name: ${{ steps.version.outputs.artifact-name }}
+
     steps:
-      - name: 1. Checkout Code
-        uses: actions/checkout@v4
-      
-      - name: 2. Set up JDK 17
+    
+      - name: Checkout Code
+        uses: actions/checkout@v3  
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
           cache: maven
-      
-      - name: 3. Build Application
+
+      - name: Set Version
+        id: version
         run: |
-          echo "Building project..."
-          if [ -d "money-transfer" ]; then
-            cd money-transfer
-          fi
-          mvn clean compile
-      
-      - name: 4. Run Unit Tests
-        run: |
-          if [ -d "money-transfer" ]; then
-            cd money-transfer
-          fi
-          mvn test
-      
-      - name: 5. SonarQube Analysis
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          if [ -d "money-transfer" ]; then
-            cd money-transfer
-          fi
-          mvn sonar:sonar \
-            -Dsonar.projectKey=money-transfer \
-            -Dsonar.projectName="Money Transfer" \
-            -Dsonar.host.url=${{ env.SONAR_HOST_URL }} \
-            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
-      
-      - name: 6. Package Application
-        run: |
-          if [ -d "money-transfer" ]; then
-            cd money-transfer
-          fi
-          mvn package -DskipTests
-      
-      - name: 7. Upload JAR to Nexus
-        env:
-          NEXUS_USER: ${{ secrets.NEXUS_USERNAME }}
-          NEXUS_PASS: ${{ secrets.NEXUS_PASSWORD }}
-        run: |
-          if [ -d "money-transfer" ]; then
-            cd money-transfer
-          fi
-          
-          JAR_FILE=$(ls target/*.jar | head -1)
           VERSION="1.0.${{ github.run_number }}"
-          
-          echo "Uploading $JAR_FILE to Nexus..."
-          
-          curl -v -u $NEXUS_USER:$NEXUS_PASS \
-            --upload-file $JAR_FILE \
-            ${{ env.NEXUS_URL }}/repository/${{ env.NEXUS_REPOSITORY }}/com/example/${{ env.APP_NAME }}/$VERSION/${{ env.APP_NAME }}-$VERSION.jar
-          
-          echo "JAR uploaded to Nexus!"
-      
-      
-      - name: 10. Summary
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "artifact-name=money-transfer-${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"    
+
+      - name: Build Application
         run: |
-          echo "========================================="
-          echo "  PIPELINE COMPLETED SUCCESSFULLY!"
-          echo "========================================="
-          echo ""
-          echo "Build Number: ${{ github.run_number }}"
-          echo "Version: 1.0.${{ github.run_number }}"
-          echo ""
-          echo "SonarQube: ${{ env.SONAR_HOST_URL }}/dashboard?id=money-transfer"
-          echo "Nexus: ${{ env.NEXUS_URL }}"
-          echo "Hello World! This is a complete CI/CD pipeline."
-          echo ""
+          if [ -d "money-transfer" ]; then
+            cd money-transfer
+          fi
+          mvn clean compile -DskipTests 
+
+      - name: Run Unit Tests
+        run: |
+          if [ -d "money-transfer" ]; then
+            cd money-transfer
+          fi
+          mvn test     
+
+      - name: Publish Test Results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: JUnit Tests
+          path: '**/target/surefire-reports/*.xml'
+          reporter: java-junit  
+
+      - name: Package Application
+        run: |
+          if [ -d "money-transfer" ]; then
+            cd money-transfer
+          fi
+          mvn package -DskipTests    
+
+      - name: Upload JAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact-name }}
+          path: |
+            money-transfer/target/*.jar
+            !money-transfer/target/*-sources.jar
+            !money-transfer/target/*-javadoc.jar
+          retention-days: 90        
+  
+      - name: Build Summary
+        run: |
+          echo "### Build Summary 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Number: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY

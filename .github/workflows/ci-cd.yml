@@ -75,14 +75,6 @@ jobs:
           fi
           mvn test     
 
-      - name: Publish Test Results
-        uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: JUnit Tests
-          path: '**/target/surefire-reports/*.xml'
-          reporter: java-junit  
-
       - name: Package Application
         run: |
           if [ -d "money-transfer" ]; then

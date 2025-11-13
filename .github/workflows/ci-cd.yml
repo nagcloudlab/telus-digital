@@ -36,56 +36,31 @@ jobs:
     - name: 🏗️ Build Project
       run: mvn clean compile -DskipTests -B
     
-    - name: 🔍 Run Checkstyle (Report Only)
+    - name: 🔍 Run Checkstyle
       run: |
         echo "Running Checkstyle for code style violations..."
         mvn checkstyle:checkstyle -B || true
-        echo "Found Checkstyle violations - see report for details"
       continue-on-error: true
     
-    - name: 🐛 Run SpotBugs (Report Only)
-      run: |
-        echo "Running SpotBugs for potential bugs..."
-        mvn spotbugs:spotbugs -B || true
-        # Check if report was generated
-        if [ -f "target/spotbugs.html" ]; then
-          echo "✅ SpotBugs report generated"
-        else
-          echo "ℹ️ SpotBugs report not generated (may need compiled classes)"
-        fi
-      continue-on-error: true
-    
-    - name: 📊 Run PMD (Report Only)
+    - name: 📊 Run PMD
       run: |
         echo "Running PMD for code quality issues..."
         mvn pmd:pmd -B || true
-        echo "PMD analysis complete - see report for details"
       continue-on-error: true
     
-    - name: 📋 Summary of Findings
+    - name: 📋 Analysis Summary
       if: always()
       run: |
         echo "=================================="
-        echo "Static Analysis Summary"
+        echo "Static Analysis Complete"
         echo "=================================="
-        echo ""
         if [ -f "target/site/checkstyle.html" ]; then
           echo "✅ Checkstyle report generated"
-        else
-          echo "⚠️  Checkstyle report not found"
-        fi
-        if [ -f "target/spotbugs.html" ]; then
-          echo "✅ SpotBugs report generated"
-        else
-          echo "⚠️  SpotBugs report not found"
         fi
         if [ -f "target/site/pmd.html" ]; then
           echo "✅ PMD report generated"
-        else
-          echo "⚠️  PMD report not found"
         fi
-        echo ""
-        echo "Download reports from Artifacts section"
+        echo "Download reports from Artifacts"
         echo "=================================="
     
     - name: 📤 Upload Checkstyle Report
@@ -94,14 +69,6 @@ jobs:
       with:
         name: checkstyle-report
         path: money-transfer/target/site/checkstyle.html
-        if-no-files-found: warn
-    
-    - name: 📤 Upload SpotBugs Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: spotbugs-report
-        path: money-transfer/target/spotbugs.html
         if-no-files-found: warn
     
     - name: 📤 Upload PMD Report

@@ -2,9 +2,9 @@ name: Deploy to AWS Staging
 
 on:
   workflow_run:
-    workflows: ["Money Transfer Pipeline - CI/CD with Shift-Left Testing"]
-    types:
-      - completed
+    # workflows: ["Money Transfer Pipeline - CI/CD with Shift-Left Testing"]
+    # types:
+      # - completed
     branches: [main]
   workflow_dispatch:  # Allow manual trigger
 

@@ -1862,7 +1862,7 @@ jobs:
         echo "URL: http://dev.money-transfer.local"
         echo "=================================="
 
-  # Job 12: Deploy to Staging Environment (Manual Approval)
+  # Job 12: Deploy to Staging Environment (Manual Approval)_
   deploy-staging:
     name: 🎯 Deploy to Staging
     runs-on: ubuntu-latest

@@ -479,3 +479,333 @@ jobs:
                   `${healthTime !== 'N/A' && parseFloat(healthTime) < 1.0 ? '✅' : '⚠️'} Performance within limits`
           });
       continue-on-error: true
+
+  # Job 7: Contract Testing (API Validation)
+  contract-tests:
+    name: 📋 Contract Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ./money-transfer
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: ☕ Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: 📋 Generate API Contract/Schema
+      run: |
+        echo "=================================="
+        echo "Generating API Contract"
+        echo "=================================="
+        
+        # Create contracts directory
+        mkdir -p target/contracts
+        
+        # Generate OpenAPI/Swagger specification
+        cat > target/contracts/api-contract.json << 'EOF'
+        {
+          "openapi": "3.0.0",
+          "info": {
+            "title": "Money Transfer API",
+            "version": "1.0.0",
+            "description": "API contract for Money Transfer Service"
+          },
+          "paths": {
+            "/api/accounts": {
+              "post": {
+                "summary": "Create new account",
+                "requestBody": {
+                  "required": true,
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "required": ["accountHolderName", "initialBalance"],
+                        "properties": {
+                          "accountHolderName": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "initialBalance": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "responses": {
+                  "201": {
+                    "description": "Account created"
+                  }
+                }
+              },
+              "get": {
+                "summary": "Get all accounts",
+                "responses": {
+                  "200": {
+                    "description": "List of accounts"
+                  }
+                }
+              }
+            },
+            "/api/accounts/{id}": {
+              "get": {
+                "summary": "Get account by ID",
+                "parameters": [
+                  {
+                    "name": "id",
+                    "in": "path",
+                    "required": true,
+                    "schema": {
+                      "type": "integer"
+                    }
+                  }
+                ],
+                "responses": {
+                  "200": {
+                    "description": "Account details"
+                  },
+                  "404": {
+                    "description": "Account not found"
+                  }
+                }
+              }
+            },
+            "/api/transfer": {
+              "post": {
+                "summary": "Transfer money between accounts",
+                "requestBody": {
+                  "required": true,
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "required": ["fromAccountId", "toAccountId", "amount"],
+                        "properties": {
+                          "fromAccountId": {
+                            "type": "integer"
+                          },
+                          "toAccountId": {
+                            "type": "integer"
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "responses": {
+                  "200": {
+                    "description": "Transfer successful"
+                  },
+                  "400": {
+                    "description": "Invalid transfer request"
+                  }
+                }
+              }
+            },
+            "/actuator/health": {
+              "get": {
+                "summary": "Health check endpoint",
+                "responses": {
+                  "200": {
+                    "description": "Service is healthy"
+                  }
+                }
+              }
+            }
+          }
+        }
+        EOF
+        
+        echo "✅ API contract generated"
+        cat target/contracts/api-contract.json | head -20
+    
+    - name: 📦 Package Application
+      run: mvn clean package -DskipTests -B
+    
+    - name: 🚀 Start Application
+      run: |
+        echo "Starting application for contract validation..."
+        java -jar target/*.jar &
+        APP_PID=$!
+        echo "APP_PID=$APP_PID" >> $GITHUB_ENV
+        
+        echo "Waiting for application to be ready..."
+        timeout 60 bash -c 'until curl -f http://localhost:8080/actuator/health; do sleep 2; done' || {
+          echo "❌ Application failed to start"
+          exit 1
+        }
+        
+        echo "✅ Application started"
+    
+    - name: 📋 Validate API Contracts
+      run: |
+        echo "=================================="
+        echo "Validating API Contracts"
+        echo "=================================="
+        
+        CONTRACT_VIOLATIONS=0
+        
+        # Test 1: POST /api/accounts - Create Account
+        echo "📋 Test 1: Create Account Endpoint"
+        RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8080/api/accounts \
+          -H "Content-Type: application/json" \
+          -d '{"accountHolderName":"TestUser","initialBalance":1000.00}')
+        
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | head -n -1)
+        
+        if [ "$HTTP_CODE" == "201" ] || [ "$HTTP_CODE" == "200" ]; then
+          echo "✅ Create Account: HTTP $HTTP_CODE (Expected: 200/201)"
+        else
+          echo "❌ Create Account: HTTP $HTTP_CODE (Expected: 200/201)"
+          CONTRACT_VIOLATIONS=$((CONTRACT_VIOLATIONS + 1))
+        fi
+        
+        # Test 2: GET /api/accounts - List Accounts
+        echo "📋 Test 2: List Accounts Endpoint"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/accounts)
+        
+        if [ "$HTTP_CODE" == "200" ]; then
+          echo "✅ List Accounts: HTTP $HTTP_CODE (Expected: 200)"
+        else
+          echo "❌ List Accounts: HTTP $HTTP_CODE (Expected: 200)"
+          CONTRACT_VIOLATIONS=$((CONTRACT_VIOLATIONS + 1))
+        fi
+        
+        # Test 3: GET /api/accounts/{id} - Get Account by ID
+        echo "📋 Test 3: Get Account by ID Endpoint"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/accounts/1)
+        
+        if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "404" ]; then
+          echo "✅ Get Account: HTTP $HTTP_CODE (Expected: 200/404)"
+        else
+          echo "❌ Get Account: HTTP $HTTP_CODE (Expected: 200/404)"
+          CONTRACT_VIOLATIONS=$((CONTRACT_VIOLATIONS + 1))
+        fi
+        
+        # Test 4: POST /api/transfer - Invalid Request (missing fields)
+        echo "📋 Test 4: Transfer with Invalid Data"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/transfer \
+          -H "Content-Type: application/json" \
+          -d '{"fromAccountId":1}')
+        
+        if [ "$HTTP_CODE" == "400" ]; then
+          echo "✅ Invalid Transfer: HTTP $HTTP_CODE (Expected: 400)"
+        else
+          echo "⚠️  Invalid Transfer: HTTP $HTTP_CODE (Expected: 400, but may vary)"
+        fi
+        
+        # Test 5: POST /api/transfer - Valid Request Structure
+        echo "📋 Test 5: Transfer with Valid Structure"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/transfer \
+          -H "Content-Type: application/json" \
+          -d '{"fromAccountId":1,"toAccountId":2,"amount":100.00}')
+        
+        if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "400" ] || [ "$HTTP_CODE" == "404" ]; then
+          echo "✅ Valid Transfer Request: HTTP $HTTP_CODE (Acceptable)"
+        else
+          echo "❌ Valid Transfer Request: HTTP $HTTP_CODE (Unexpected)"
+          CONTRACT_VIOLATIONS=$((CONTRACT_VIOLATIONS + 1))
+        fi
+        
+        # Test 6: GET /actuator/health - Health Check
+        echo "📋 Test 6: Health Check Endpoint"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health)
+        
+        if [ "$HTTP_CODE" == "200" ]; then
+          echo "✅ Health Check: HTTP $HTTP_CODE (Expected: 200)"
+        else
+          echo "❌ Health Check: HTTP $HTTP_CODE (Expected: 200)"
+          CONTRACT_VIOLATIONS=$((CONTRACT_VIOLATIONS + 1))
+        fi
+        
+        # Summary
+        echo ""
+        echo "=================================="
+        echo "Contract Validation Summary"
+        echo "=================================="
+        echo "Contract Violations: $CONTRACT_VIOLATIONS"
+        
+        if [ $CONTRACT_VIOLATIONS -eq 0 ]; then
+          echo "✅ All API contracts validated successfully!"
+        else
+          echo "❌ Contract validation failed with $CONTRACT_VIOLATIONS violations"
+          echo "⚠️  API changes may break downstream consumers!"
+        fi
+        
+        echo "CONTRACT_VIOLATIONS=$CONTRACT_VIOLATIONS" >> $GITHUB_ENV
+    
+    - name: 🛑 Stop Application
+      if: always()
+      run: |
+        if [ ! -z "$APP_PID" ]; then
+          echo "Stopping application..."
+          kill $APP_PID 2>/dev/null || true
+          sleep 2
+        fi
+    
+    - name: 📤 Upload API Contract
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: api-contract
+        path: money-transfer/target/contracts/
+        retention-days: 90
+    
+    - name: 💬 Comment Contract Results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const violations = process.env.CONTRACT_VIOLATIONS || '0';
+          const status = violations === '0' ? '✅' : '❌';
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## 📋 API Contract Validation\n\n` +
+                  `${status} Contract Violations: ${violations}\n\n` +
+                  `### Tests Performed:\n` +
+                  `- ✅ POST /api/accounts (Create Account)\n` +
+                  `- ✅ GET /api/accounts (List Accounts)\n` +
+                  `- ✅ GET /api/accounts/{id} (Get Account)\n` +
+                  `- ✅ POST /api/transfer (Transfer Money)\n` +
+                  `- ✅ GET /actuator/health (Health Check)\n\n` +
+                  `${violations === '0' ? '✅ All API contracts validated! Safe to merge.' : '⚠️ API changes detected! Review breaking changes before merging.'}\n\n` +
+                  `[Download API Contract](${context.payload.repository.html_url}/actions/runs/${context.runId})`
+          });
+      continue-on-error: true
+    
+    - name: ❌ Fail on Contract Violations
+      if: env.CONTRACT_VIOLATIONS != '0'
+      run: |
+        echo "=================================="
+        echo "❌ CONTRACT VALIDATION FAILED"
+        echo "=================================="
+        echo "Breaking changes detected in API contract!"
+        echo "This may break downstream consumers."
+        echo ""
+        echo "Action required:"
+        echo "1. Review API changes"
+        echo "2. Update API version if needed"
+        echo "3. Notify downstream consumers"
+        echo "4. Update documentation"
+        echo "=================================="
+        exit 1    

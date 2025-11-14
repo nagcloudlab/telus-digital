@@ -111,7 +111,7 @@ jobs:
   build-and-test:
     name: 🏗️ Build & Unit Tests
     runs-on: ubuntu-latest
-    needs: [static-analysis, security-scan]
+    # needs: [static-analysis, security-scan]
     defaults:
       run:
         working-directory: ./money-transfer

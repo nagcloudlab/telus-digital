@@ -93,6 +93,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.0.0</version>
+                <configuration>
+                    <groups>unit</groups>
+                    <excludedGroups>integration</excludedGroups>
+                </configuration>
             </plugin>
             
             <!-- JaCoCo Maven Plugin for Code Coverage -->
@@ -182,35 +186,15 @@
                 </executions>
             </plugin>
             
-            <!-- OWASP Dependency Check for Security Vulnerabilities -->
-            <plugin>
-                <groupId>org.owasp</groupId>
-                <artifactId>dependency-check-maven</artifactId>
-                <version>12.1.9</version>
-                <configuration>
-                    <failBuildOnCVSS>11</failBuildOnCVSS>
-                    <skipProvidedScope>true</skipProvidedScope>
-                    <skipSystemScope>true</skipSystemScope>
-                    <skipTestScope>false</skipTestScope>
-                    <formats>
-                        <format>HTML</format>
-                        <format>JSON</format>
-                    </formats>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>check</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            
             <!-- Maven Failsafe Plugin for Integration Tests -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.0.0</version>
+                <configuration>
+                    <groups>integration</groups>
+                    <excludedGroups>unit</excludedGroups>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

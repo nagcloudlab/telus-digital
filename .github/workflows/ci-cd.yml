@@ -1003,3 +1003,298 @@ jobs:
                   `[Download Build Report](${context.payload.repository.html_url}/actions/runs/${context.runId})`
           });
       continue-on-error: true
+  # Job 9: Security Scan Docker Image
+  scan-docker-image:
+    name: 🔒 Scan Docker Image
+    runs-on: ubuntu-latest
+    needs: build-docker-image
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    defaults:
+      run:
+        working-directory: ./money-transfer
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: 🏷️ Get Image Tag
+      id: get-tag
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          IMAGE_TAG="pr-${{ github.event.pull_request.number }}"
+        elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+          IMAGE_TAG="latest"
+        else
+          IMAGE_TAG="${GITHUB_REF##*/}"
+        fi
+        
+        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+        IMAGE_TAG="${IMAGE_TAG}-${SHORT_SHA}"
+        
+        echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+        echo "IMAGE_NAME=money-transfer:${IMAGE_TAG}" >> $GITHUB_ENV
+        
+        echo "Will scan image: money-transfer:${IMAGE_TAG}"
+    
+    - name: 📥 Download Docker Image
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image
+        path: ./money-transfer
+    
+    - name: 📦 Load Docker Image
+      run: |
+        echo "Loading Docker image from artifact..."
+        gunzip -c money-transfer-${IMAGE_TAG}.tar.gz | docker load
+        
+        echo "✅ Image loaded successfully"
+        docker images money-transfer:${IMAGE_TAG}
+    
+    - name: 🔒 Run Trivy Vulnerability Scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'money-transfer:${{ env.IMAGE_TAG }}'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        timeout: '10m'
+    
+    - name: 📤 Upload Trivy SARIF Report
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+      continue-on-error: true
+    
+    - name: 🔍 Run Trivy Scan (Detailed)
+      run: |
+        echo "=================================="
+        echo "Running Detailed Trivy Scan"
+        echo "=================================="
+        
+        # Install Trivy
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install trivy -y
+        
+        # Run scan and save results
+        trivy image \
+          --severity CRITICAL,HIGH,MEDIUM,LOW \
+          --format table \
+          --output trivy-report.txt \
+          money-transfer:${IMAGE_TAG}
+        
+        # Also generate JSON report
+        trivy image \
+          --severity CRITICAL,HIGH,MEDIUM,LOW \
+          --format json \
+          --output trivy-report.json \
+          money-transfer:${IMAGE_TAG}
+        
+        echo "✅ Trivy scan completed"
+    
+    - name: 📊 Parse Scan Results
+      run: |
+        echo "=================================="
+        echo "Security Scan Summary"
+        echo "=================================="
+        
+        # Extract vulnerability counts from JSON
+        if [ -f "trivy-report.json" ]; then
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
+          MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-report.json)
+          LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-report.json)
+          
+          echo "🔴 Critical: ${CRITICAL}"
+          echo "🟠 High: ${HIGH}"
+          echo "🟡 Medium: ${MEDIUM}"
+          echo "🟢 Low: ${LOW}"
+          
+          TOTAL=$((CRITICAL + HIGH + MEDIUM + LOW))
+          echo "📊 Total: ${TOTAL}"
+          
+          # Save to environment
+          echo "CRITICAL_COUNT=${CRITICAL}" >> $GITHUB_ENV
+          echo "HIGH_COUNT=${HIGH}" >> $GITHUB_ENV
+          echo "MEDIUM_COUNT=${MEDIUM}" >> $GITHUB_ENV
+          echo "LOW_COUNT=${LOW}" >> $GITHUB_ENV
+          echo "TOTAL_COUNT=${TOTAL}" >> $GITHUB_ENV
+          
+          echo "=================================="
+          
+          # Show top vulnerabilities
+          if [ "${CRITICAL}" -gt 0 ] || [ "${HIGH}" -gt 0 ]; then
+            echo ""
+            echo "⚠️  Critical & High Severity Vulnerabilities:"
+            echo "=================================="
+            jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH") | "[\(.Severity)] \(.VulnerabilityID): \(.Title // .Description | .[0:80])"' trivy-report.json | head -10
+          fi
+        else
+          echo "⚠️  Could not parse scan results"
+          echo "CRITICAL_COUNT=0" >> $GITHUB_ENV
+          echo "HIGH_COUNT=0" >> $GITHUB_ENV
+          echo "MEDIUM_COUNT=0" >> $GITHUB_ENV
+          echo "LOW_COUNT=0" >> $GITHUB_ENV
+          echo "TOTAL_COUNT=0" >> $GITHUB_ENV
+        fi
+    
+    - name: 📊 Display Scan Report
+      if: always()
+      run: |
+        echo "=================================="
+        echo "Full Trivy Scan Report"
+        echo "=================================="
+        
+        if [ -f "trivy-report.txt" ]; then
+          cat trivy-report.txt
+        else
+          echo "⚠️  Report file not found"
+        fi
+    
+    - name: 📤 Upload Scan Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: trivy-scan-reports
+        path: |
+          money-transfer/trivy-report.txt
+          money-transfer/trivy-report.json
+          trivy-results.sarif
+        retention-days: 30
+    
+    - name: 🎯 Security Gate Check
+      run: |
+        echo "=================================="
+        echo "Security Gate Evaluation"
+        echo "=================================="
+        
+        CRITICAL=${CRITICAL_COUNT:-0}
+        HIGH=${HIGH_COUNT:-0}
+        
+        echo "Critical vulnerabilities: ${CRITICAL}"
+        echo "High vulnerabilities: ${HIGH}"
+        echo ""
+        
+        # Define thresholds
+        MAX_CRITICAL=0
+        MAX_HIGH=10
+        
+        if [ "${CRITICAL}" -gt "${MAX_CRITICAL}" ]; then
+          echo "❌ FAILED: ${CRITICAL} critical vulnerabilities found (max: ${MAX_CRITICAL})"
+          echo "Action: Fix critical vulnerabilities before deployment"
+          echo "SECURITY_GATE=failed" >> $GITHUB_ENV
+          exit 1
+        elif [ "${HIGH}" -gt "${MAX_HIGH}" ]; then
+          echo "⚠️  WARNING: ${HIGH} high vulnerabilities found (max: ${MAX_HIGH})"
+          echo "Consider fixing high vulnerabilities"
+          echo "SECURITY_GATE=warning" >> $GITHUB_ENV
+        else
+          echo "✅ PASSED: Security gate checks passed"
+          echo "SECURITY_GATE=passed" >> $GITHUB_ENV
+        fi
+      continue-on-error: true
+    
+    - name: 💬 Comment Scan Results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const critical = process.env.CRITICAL_COUNT || '0';
+          const high = process.env.HIGH_COUNT || '0';
+          const medium = process.env.MEDIUM_COUNT || '0';
+          const low = process.env.LOW_COUNT || '0';
+          const total = process.env.TOTAL_COUNT || '0';
+          const gate = process.env.SECURITY_GATE || 'unknown';
+          
+          const gateEmoji = gate === 'passed' ? '✅' : gate === 'warning' ? '⚠️' : '❌';
+          
+          let body = `## 🔒 Docker Image Security Scan\n\n`;
+          body += `${gateEmoji} **Security Gate:** ${gate.toUpperCase()}\n\n`;
+          body += `### Vulnerability Summary:\n`;
+          body += `| Severity | Count |\n`;
+          body += `|----------|-------|\n`;
+          body += `| 🔴 Critical | ${critical} |\n`;
+          body += `| 🟠 High | ${high} |\n`;
+          body += `| 🟡 Medium | ${medium} |\n`;
+          body += `| 🟢 Low | ${low} |\n`;
+          body += `| **📊 Total** | **${total}** |\n\n`;
+          
+          if (gate === 'failed') {
+            body += `### ❌ Security Gate Failed\n`;
+            body += `Critical vulnerabilities must be fixed before deployment.\n\n`;
+          } else if (gate === 'warning') {
+            body += `### ⚠️ Security Gate Warning\n`;
+            body += `Consider fixing high severity vulnerabilities.\n\n`;
+          } else {
+            body += `### ✅ Security Gate Passed\n`;
+            body += `No critical vulnerabilities found.\n\n`;
+          }
+          
+          body += `### Image Scanned:\n`;
+          body += `\`money-transfer:${process.env.IMAGE_TAG}\`\n\n`;
+          body += `[View detailed report in artifacts](${context.payload.repository.html_url}/actions/runs/${context.runId})`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: body
+          });
+      continue-on-error: true
+    
+    - name: 📋 Generate Security Summary
+      if: always()
+      run: |
+        cat > security-summary.md << EOF
+        # Docker Image Security Scan Report
+        
+        ## Image Details
+        - **Image:** money-transfer:${IMAGE_TAG}
+        - **Scan Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+        - **Scan Tool:** Trivy
+        
+        ## Vulnerability Summary
+        
+        | Severity | Count |
+        |----------|-------|
+        | 🔴 Critical | ${CRITICAL_COUNT:-0} |
+        | 🟠 High | ${HIGH_COUNT:-0} |
+        | 🟡 Medium | ${MEDIUM_COUNT:-0} |
+        | 🟢 Low | ${LOW_COUNT:-0} |
+        | **Total** | **${TOTAL_COUNT:-0}** |
+        
+        ## Security Gate Status
+        
+        ${SECURITY_GATE:-unknown}
+        
+        ## Recommendations
+        
+        1. Review all critical and high severity vulnerabilities
+        2. Update base images to latest versions
+        3. Apply security patches
+        4. Consider using minimal base images (alpine, distroless)
+        5. Regularly scan images in CI/CD pipeline
+        
+        ## Next Steps
+        
+        - Fix critical vulnerabilities (if any)
+        - Review high severity issues
+        - Update dependencies
+        - Re-scan after fixes
+        
+        EOF
+        
+        cat security-summary.md
+    
+    - name: 📤 Upload Security Summary
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-summary
+        path: money-transfer/security-summary.md
+        retention-days: 90

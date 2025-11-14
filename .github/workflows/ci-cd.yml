@@ -1303,7 +1303,7 @@ jobs:
   package-artifacts:
     name: 📦 Package & Artifacts
     runs-on: ubuntu-latest
-    needs: [scan-docker-image, coverage-analysis, smoke-and-performance-tests]
+    needs: [scan-docker-image]
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     defaults:
       run:

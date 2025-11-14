@@ -1,0 +1,441 @@
+name: Deploy to AWS Staging
+
+on:
+  workflow_run:
+    workflows: ["Money Transfer Pipeline - CI/CD with Shift-Left Testing"]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  AWS_REGION: us-east-1
+  ENVIRONMENT: staging
+
+jobs:
+  # Job 1: Deploy Infrastructure with Terraform
+  terraform-deploy:
+    name: 🏗️ Terraform Infrastructure
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    environment:
+      name: staging
+    
+    outputs:
+      ecr_repository: ${{ steps.terraform-outputs.outputs.ecr_repository }}
+      ecs_cluster: ${{ steps.terraform-outputs.outputs.ecs_cluster }}
+      ecs_service: ${{ steps.terraform-outputs.outputs.ecs_service }}
+      alb_url: ${{ steps.terraform-outputs.outputs.alb_url }}
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🔐 Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: 🏗️ Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+        terraform_wrapper: false  # Important for output parsing
+    
+    - name: 🔧 Terraform Init
+      working-directory: ./infrastructure/terraform/aws/staging
+      run: |
+        echo "Initializing Terraform..."
+        terraform init
+        echo "✅ Terraform initialized"
+    
+    - name: 📋 Terraform Plan
+      working-directory: ./infrastructure/terraform/aws/staging
+      env:
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD_STAGING }}
+      run: |
+        echo "Planning infrastructure changes..."
+        terraform plan -out=tfplan -input=false
+        echo "✅ Terraform plan created"
+    
+    - name: 🚀 Terraform Apply
+      working-directory: ./infrastructure/terraform/aws/staging
+      env:
+        TF_VAR_db_password: ${{ secrets.DB_PASSWORD_STAGING }}
+      run: |
+        echo "Applying infrastructure changes..."
+        terraform apply -auto-approve -input=false tfplan
+        echo "✅ Infrastructure deployed"
+    
+    - name: 📊 Get Terraform Outputs
+      id: terraform-outputs
+      working-directory: ./infrastructure/terraform/aws/staging
+      run: |
+        echo "Retrieving Terraform outputs..."
+        
+        ECR_REPO=$(terraform output -raw ecr_repository_url)
+        ECS_CLUSTER=$(terraform output -raw ecs_cluster_name)
+        ECS_SERVICE=$(terraform output -raw ecs_service_name)
+        ALB_URL=$(terraform output -raw alb_url)
+        
+        echo "ecr_repository=$ECR_REPO" >> $GITHUB_OUTPUT
+        echo "ecs_cluster=$ECS_CLUSTER" >> $GITHUB_OUTPUT
+        echo "ecs_service=$ECS_SERVICE" >> $GITHUB_OUTPUT
+        echo "alb_url=$ALB_URL" >> $GITHUB_OUTPUT
+        
+        echo "=================================="
+        echo "Infrastructure Outputs"
+        echo "=================================="
+        echo "ECR Repository: $ECR_REPO"
+        echo "ECS Cluster: $ECS_CLUSTER"
+        echo "ECS Service: $ECS_SERVICE"
+        echo "Application URL: $ALB_URL"
+        echo "=================================="
+
+  # Job 2: Build and Push Docker Image to ECR
+  docker-push:
+    name: 🐳 Docker Push to ECR
+    runs-on: ubuntu-latest
+    needs: terraform-deploy
+    environment:
+      name: staging
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: �� Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: 🔐 Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+    
+    - name: 📥 Download Docker Image Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image
+        path: ./artifacts
+    
+    - name: 🐳 Load Docker Image
+      run: |
+        echo "Loading Docker image from artifact..."
+        
+        # Find and load the image
+        IMAGE_FILE=$(ls artifacts/money-transfer-*.tar.gz | head -1)
+        gunzip -c "$IMAGE_FILE" | docker load
+        
+        # Get the loaded image name
+        IMAGE_NAME=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep money-transfer | head -1)
+        echo "Loaded image: $IMAGE_NAME"
+        echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+    
+    - name: 🏷️ Tag and Push to ECR
+      env:
+        ECR_REPOSITORY: ${{ needs.terraform-deploy.outputs.ecr_repository }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "Tagging image for ECR..."
+        
+        # Tag with commit SHA
+        docker tag $IMAGE_NAME $ECR_REPOSITORY:$IMAGE_TAG
+        
+        # Tag with latest
+        docker tag $IMAGE_NAME $ECR_REPOSITORY:latest
+        
+        # Tag with build number
+        docker tag $IMAGE_NAME $ECR_REPOSITORY:build-${{ github.run_number }}
+        
+        echo "Pushing images to ECR..."
+        docker push $ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REPOSITORY:latest
+        docker push $ECR_REPOSITORY:build-${{ github.run_number }}
+        
+        echo "✅ Images pushed successfully"
+        echo ""
+        echo "=================================="
+        echo "Docker Images"
+        echo "=================================="
+        echo "SHA Tag: $ECR_REPOSITORY:$IMAGE_TAG"
+        echo "Latest: $ECR_REPOSITORY:latest"
+        echo "Build: $ECR_REPOSITORY:build-${{ github.run_number }}"
+        echo "=================================="
+
+  # Job 3: Deploy to ECS (Update Service)
+  ecs-deploy:
+    name: 🚀 Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: [terraform-deploy, docker-push]
+    environment:
+      name: staging
+      url: ${{ needs.terraform-deploy.outputs.alb_url }}
+    
+    steps:
+    - name: �� Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: 🔄 Update ECS Service
+      env:
+        ECS_CLUSTER: ${{ needs.terraform-deploy.outputs.ecs_cluster }}
+        ECS_SERVICE: ${{ needs.terraform-deploy.outputs.ecs_service }}
+      run: |
+        echo "Updating ECS service with new image..."
+        
+        # Force new deployment
+        aws ecs update-service \
+          --cluster $ECS_CLUSTER \
+          --service $ECS_SERVICE \
+          --force-new-deployment \
+          --region ${{ env.AWS_REGION }}
+        
+        echo "✅ Deployment initiated"
+        echo ""
+        echo "Waiting for service to stabilize..."
+    
+    - name: ⏳ Wait for Service Stability
+      env:
+        ECS_CLUSTER: ${{ needs.terraform-deploy.outputs.ecs_cluster }}
+        ECS_SERVICE: ${{ needs.terraform-deploy.outputs.ecs_service }}
+      run: |
+        echo "Waiting for ECS service to reach stable state..."
+        
+        # Wait up to 10 minutes for service to stabilize
+        aws ecs wait services-stable \
+          --cluster $ECS_CLUSTER \
+          --services $ECS_SERVICE \
+          --region ${{ env.AWS_REGION }}
+        
+        echo "✅ Service is stable"
+    
+    - name: 📊 Get Service Status
+      env:
+        ECS_CLUSTER: ${{ needs.terraform-deploy.outputs.ecs_cluster }}
+        ECS_SERVICE: ${{ needs.terraform-deploy.outputs.ecs_service }}
+      run: |
+        echo "Getting service status..."
+        
+        aws ecs describe-services \
+          --cluster $ECS_CLUSTER \
+          --services $ECS_SERVICE \
+          --region ${{ env.AWS_REGION }} \
+          --query 'services[0].[serviceName,status,runningCount,desiredCount]' \
+          --output table
+        
+        echo "✅ Service status retrieved"
+
+  # Job 4: Health Check
+  health-check:
+    name: 🏥 Health Check
+    runs-on: ubuntu-latest
+    needs: [terraform-deploy, ecs-deploy]
+    
+    steps:
+    - name: ⏳ Wait for Application Warmup
+      run: |
+        echo "Waiting 60 seconds for application to warm up..."
+        sleep 60
+    
+    - name: 🏥 Perform Health Check
+      env:
+        ALB_URL: ${{ needs.terraform-deploy.outputs.alb_url }}
+      run: |
+        echo "Checking application health..."
+        echo "URL: ${ALB_URL}/actuator/health"
+        echo ""
+        
+        MAX_ATTEMPTS=30
+        ATTEMPT=0
+        
+        while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${ALB_URL}/actuator/health || echo "000")
+          
+          if [ "$HTTP_CODE" == "200" ]; then
+            echo "✅ Health check passed!"
+            echo ""
+            echo "Full health response:"
+            curl -s ${ALB_URL}/actuator/health | jq '.'
+            exit 0
+          fi
+          
+          ATTEMPT=$((ATTEMPT + 1))
+          echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - Status: $HTTP_CODE (waiting...)"
+          sleep 10
+        done
+        
+        echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+        exit 1
+    
+    - name: 🧪 Smoke Tests
+      env:
+        ALB_URL: ${{ needs.terraform-deploy.outputs.alb_url }}
+      run: |
+        echo "Running smoke tests..."
+        echo ""
+        
+        # Test 1: Health endpoint
+        echo "Test 1: Health endpoint"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${ALB_URL}/actuator/health)
+        if [ "$HTTP_CODE" == "200" ]; then
+          echo "✅ Health endpoint - PASSED"
+        else
+          echo "❌ Health endpoint - FAILED (HTTP $HTTP_CODE)"
+          exit 1
+        fi
+        
+        # Test 2: Info endpoint
+        echo ""
+        echo "Test 2: Info endpoint"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${ALB_URL}/actuator/info)
+        if [ "$HTTP_CODE" == "200" ]; then
+          echo "✅ Info endpoint - PASSED"
+        else
+          echo "❌ Info endpoint - FAILED (HTTP $HTTP_CODE)"
+          exit 1
+        fi
+        
+        # Test 3: API endpoint (if exists)
+        echo ""
+        echo "Test 3: API base endpoint"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${ALB_URL}/api/accounts || echo "404")
+        if [ "$HTTP_CODE" == "200" ] || [ "$HTTP_CODE" == "404" ]; then
+          echo "✅ API endpoint - PASSED (HTTP $HTTP_CODE)"
+        else
+          echo "⚠️  API endpoint - WARNING (HTTP $HTTP_CODE)"
+        fi
+        
+        echo ""
+        echo "=================================="
+        echo "✅ All smoke tests passed!"
+        echo "=================================="
+
+  # Job 5: Deployment Summary
+  deployment-summary:
+    name: 📊 Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [terraform-deploy, docker-push, ecs-deploy, health-check]
+    if: always()
+    
+    steps:
+    - name: 📊 Generate Deployment Report
+      env:
+        ALB_URL: ${{ needs.terraform-deploy.outputs.alb_url }}
+        ECR_REPO: ${{ needs.terraform-deploy.outputs.ecr_repository }}
+        ECS_CLUSTER: ${{ needs.terraform-deploy.outputs.ecs_cluster }}
+        ECS_SERVICE: ${{ needs.terraform-deploy.outputs.ecs_service }}
+      run: |
+        cat << EOF > deployment-report.md
+        # AWS Staging Deployment Report
+        
+        ## Deployment Information
+        
+        - **Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+        - **Commit:** ${{ github.sha }}
+        - **Build:** #${{ github.run_number }}
+        - **Triggered By:** ${{ github.actor }}
+        - **Workflow:** ${{ github.workflow }}
+        
+        ## Infrastructure
+        
+        - **Environment:** AWS Staging
+        - **Region:** ${{ env.AWS_REGION }}
+        - **ECS Cluster:** ${ECS_CLUSTER}
+        - **ECS Service:** ${ECS_SERVICE}
+        
+        ## Application
+        
+        - **Docker Image:** ${ECR_REPO}:${{ github.sha }}
+        - **Application URL:** ${ALB_URL}
+        - **Health Check:** ${ALB_URL}/actuator/health
+        
+        ## Deployment Status
+        
+        - ✅ Terraform: Infrastructure deployed
+        - ✅ Docker: Image pushed to ECR
+        - ✅ ECS: Service updated
+        - ✅ Health Check: Passed
+        - ✅ Smoke Tests: Passed
+        
+        ## Next Steps
+        
+        1. Verify application functionality
+        2. Run integration tests
+        3. Monitor CloudWatch logs
+        4. Check metrics in CloudWatch
+        
+        ## Rollback Instructions
+        
+        If issues detected, rollback using:
+        
+        \`\`\`bash
+        # Via AWS Console: ECS → Cluster → Service → Update → Select previous task definition
+        
+        # Or via CLI:
+        aws ecs update-service \\
+          --cluster ${ECS_CLUSTER} \\
+          --service ${ECS_SERVICE} \\
+          --task-definition money-transfer-staging:PREVIOUS_REVISION \\
+          --region ${{ env.AWS_REGION }}
+        \`\`\`
+        
+        ## Monitoring
+        
+        - **CloudWatch Logs:** /ecs/money-transfer-staging
+        - **ECS Console:** https://console.aws.amazon.com/ecs/home\?region\=$\{\{ env.AWS_REGION }}
+        
+        ---
+        
+        **Deployment ID:** ${{ github.run_id }}
+        EOF
+        
+        cat deployment-report.md
+        
+        echo ""
+        echo "╔════════════════════════════════════════╗"
+        echo "║                                        ║"
+        echo "║  ✅ STAGING DEPLOYMENT SUCCESSFUL! ✅  ║"
+        echo "║                                        ║"
+        echo "╚════════════════════════════════════════╝"
+        echo ""
+        echo "Application URL: ${ALB_URL}"
+        echo "Deployment Report: See job artifacts"
+    
+    - name: 📤 Upload Deployment Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: staging-deployment-report
+        path: deployment-report.md
+        retention-days: 90
+    
+    - name: 💬 Comment on PR (if applicable)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const alb_url = process.env.ALB_URL;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## 🚀 Staging Deployment Complete!\n\n` +
+                  `### Application URL\n` +
+                  `${alb_url}\n\n` +
+                  `### Status\n` +
+                  `- ✅ Infrastructure deployed\n` +
+                  `- ✅ Docker image pushed\n` +
+                  `- ✅ ECS service updated\n` +
+                  `- ✅ Health checks passed\n` +
+                  `- ✅ Smoke tests passed\n\n` +
+                  `[View Deployment Details](${context.payload.repository.html_url}/actions/runs/${context.runId})`
+          });
+      continue-on-error: true

@@ -100,10 +100,11 @@ jobs:
     - name: 🔒 OWASP Dependency Check
       run: |
         echo "Running OWASP Dependency Check for vulnerabilities..."
-        mvn org.owasp:dependency-check-maven:9.0.9:check \
+        mvn org.owasp:dependency-check-maven:12.1.9:check \
           -DfailBuildOnCVSS=11 \
           -DskipProvidedScope=true \
           -DskipSystemScope=true \
+          -DnvdApiKey=${{ secrets.NVD_API_KEY }} \
           || true
       continue-on-error: true
     

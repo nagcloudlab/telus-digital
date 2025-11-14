@@ -1864,342 +1864,91 @@ jobs:
 
   # Job 12: Deploy to Staging Environment (Manual Approval)_
   deploy-staging:
-    name: 🎯 Deploy to Staging
+    name: 🎯 Staging Deployment Ready
     runs-on: ubuntu-latest
     needs: deploy-dev
     if: github.ref == 'refs/heads/main'
     environment:
       name: staging
-      url: http://staging.money-transfer.local
+      url: https://github.com/${{ github.repository }}/actions/workflows/deploy-aws-staging.yml
     
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-    
     - name: 📥 Download Artifacts
       uses: actions/download-artifact@v4
       with:
         name: deployment-artifacts
         path: ./artifacts
     
-    - name: 📋 Pre-Deployment Checklist
+    - name: 📋 Pre-Deployment Verification
       run: |
         echo "=================================="
-        echo "Pre-Deployment Checklist"
+        echo "🎯 Staging Deployment Preparation"
         echo "=================================="
-        echo "✅ Dev deployment successful"
-        echo "✅ All tests passed"
-        echo "✅ Security scans clean"
-        echo "✅ Artifacts verified"
-        echo "✅ Manual approval received"
-        echo "=================================="
-        echo ""
-        echo "Proceeding with Staging deployment..."
-    
-    - name: 📦 Prepare Staging Deployment
-      run: |
-        echo "=================================="
-        echo "🎯 Deploying to Staging"
-        echo "=================================="
-        echo "Version: $(cat artifacts/build-metadata.json | jq -r '.version')"
-        echo "Environment: Staging"
-        echo "Deployment Type: Manual Approval Required"
-        echo "=================================="
-    
-    - name: 🐳 Simulate Docker Deployment to Staging
-      run: |
-        echo "Simulating Docker deployment to Staging environment..."
-        echo ""
-        echo "Commands that would run in real deployment:"
-        echo "  1. docker load < docker-image.tar.gz"
-        echo "  2. docker tag money-transfer:latest money-transfer:staging"
-        echo "  3. docker stop money-transfer-staging || true"
-        echo "  4. docker rm money-transfer-staging || true"
-        echo "  5. docker run -d \\"
-        echo "       --name money-transfer-staging \\"
-        echo "       -p 8080:8080 \\"
-        echo "       -e SPRING_PROFILES_ACTIVE=staging \\"
-        echo "       -e JAVA_OPTS='-Xmx512m' \\"
-        echo "       money-transfer:staging"
-        echo ""
-        echo "✅ Simulated deployment successful"
-    
-    - name: 🏥 Post-Deployment Health Check
-      run: |
-        echo "Running comprehensive health checks..."
-        echo ""
-        echo "Health check results:"
-        echo "  ✅ Application started"
-        echo "  ✅ Health endpoint responding"
-        echo "  ✅ Database connection pool healthy"
-        echo "  ✅ All API endpoints accessible"
-        echo "  ✅ Memory usage normal"
-        echo "  ✅ CPU usage normal"
-        echo ""
-        echo "Health check URL: http://staging.money-transfer.local/actuator/health"
-    
-    - name: 🧪 Integration Tests
-      run: |
-        echo "Running integration tests in Staging environment..."
-        echo ""
-        echo "Integration test suite:"
-        echo "  ✅ API Contract Tests - PASSED"
-        echo "  ✅ Database Integration - PASSED"
-        echo "  ✅ End-to-End Workflows - PASSED"
-        echo "  ✅ Performance Tests - PASSED"
-        echo "  ✅ Security Tests - PASSED"
-        echo ""
-        echo "All integration tests passed! ✅"
-    
-    - name: 📊 Deployment Summary
-      run: |
+        
         VERSION=$(cat artifacts/build-metadata.json | jq -r '.version')
         
-        echo "=================================="
-        echo "✅ STAGING DEPLOYMENT SUCCESSFUL"
-        echo "=================================="
-        echo "Environment: Staging"
-        echo "Version: ${VERSION}"
-        echo "Deployed At: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-        echo "Status: Running"
-        echo "URL: http://staging.money-transfer.local"
+        echo "✅ CI/CD Pipeline Status:"
+        echo "   • Build: Complete"
+        echo "   • Tests: All Passed"
+        echo "   • Docker Image: Built & Tested"
+        echo "   • Artifacts: Generated"
+        echo "   • Version: ${VERSION}"
         echo ""
-        echo "Next: Production deployment (requires approval)"
+        echo "✅ Ready for AWS Staging Deployment"
+        echo ""
+        echo "📋 Real Deployment Details:"
+        echo "   • Workflow: 'Deploy to AWS Staging'"
+        echo "   • Trigger: Automatic (after this completes)"
+        echo "   • Environment: AWS ECS Fargate"
+        echo "   • Region: us-east-1"
+        echo "   • Approval: Required (via GitHub Environment)"
+        echo ""
         echo "=================================="
-
-  # Job 13: Deploy to Production Environment (Manual Approval + Extra Protection)
-  deploy-production:
-    name: 🌟 Deploy to Production
-    runs-on: ubuntu-latest
-    needs: deploy-staging
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: https://money-transfer.com
     
-    steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-    
-    - name: 📥 Download Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: deployment-artifacts
-        path: ./artifacts
-    
-    - name: 🔐 Pre-Production Checklist
+    - name: 🚀 Deployment Trigger Info
       run: |
-        echo "=================================="
-        echo "🔐 Production Pre-Deployment Checklist"
-        echo "=================================="
-        echo "✅ Dev deployment successful"
-        echo "✅ Staging deployment successful"
-        echo "✅ All tests passed"
-        echo "✅ Security scans clean"
-        echo "✅ Integration tests passed"
-        echo "✅ Manual approval received"
-        echo "✅ Release notes reviewed"
-        echo "✅ Rollback plan ready"
+        echo "ℹ️  AWS Staging Deployment Workflow"
         echo "=================================="
         echo ""
-        echo "All checks passed. Proceeding with Production deployment..."
+        echo "The real deployment will execute these steps:"
+        echo "  1. 🏗️  Deploy infrastructure (Terraform)"
+        echo "     • VPC, subnets, security groups"
+        echo "     • ECS cluster and service"
+        echo "     • RDS PostgreSQL database"
+        echo "     • Application Load Balancer"
+        echo ""
+        echo "  2. 🐳 Push Docker image to ECR"
+        echo "     • Tag with commit SHA"
+        echo "     • Update latest tag"
+        echo ""
+        echo "  3. 🔄 Update ECS service"
+        echo "     • Deploy new task definition"
+        echo "     • Wait for service stability"
+        echo ""
+        echo "  4. 🏥 Health checks"
+        echo "     • Application health endpoint"
+        echo "     • API endpoint validation"
+        echo "     • Database connectivity"
+        echo ""
+        echo "  5. 📊 Deployment verification"
+        echo "     • Service status check"
+        echo "     • Performance validation"
+        echo "     • Generate deployment report"
+        echo ""
+        echo "=================================="
+        echo "⏳ Deployment workflow will start automatically..."
+        echo "   Monitor: Actions → 'Deploy to AWS Staging'"
+        echo "=================================="
     
-    - name: 📦 Prepare Production Deployment
+    - name: ✅ CI/CD Pipeline Complete
       run: |
-        VERSION=$(cat artifacts/build-metadata.json | jq -r '.version')
-        
-        echo "=================================="
-        echo "🌟 Deploying to Production"
-        echo "=================================="
-        echo "Version: ${VERSION}"
-        echo "Environment: Production"
-        echo "Deployment Strategy: Blue-Green"
-        echo "Rollback: Automated"
-        echo "=================================="
-    
-    - name: 🔵 Blue-Green Deployment Simulation
-      run: |
-        echo "Simulating Blue-Green deployment to Production..."
         echo ""
-        echo "Step 1: Deploy to Green environment (new version)"
-        echo "  → docker run -d --name money-transfer-green money-transfer:new"
-        echo "  → Wait for health checks..."
-        echo "  ✅ Green environment healthy"
-        echo ""
-        echo "Step 2: Run smoke tests on Green"
-        echo "  ✅ All smoke tests passed"
-        echo ""
-        echo "Step 3: Switch traffic from Blue to Green"
-        echo "  → Update load balancer configuration"
-        echo "  → Gradual traffic shift (10% → 50% → 100%)"
-        echo "  ✅ Traffic switched successfully"
-        echo ""
-        echo "Step 4: Monitor Green environment"
-        echo "  → Error rate: 0.01% ✅"
-        echo "  → Response time: 150ms ✅"
-        echo "  → CPU usage: 45% ✅"
-        echo "  ✅ All metrics normal"
-        echo ""
-        echo "Step 5: Decommission Blue environment"
-        echo "  → Keep Blue as backup for 1 hour"
-        echo "  ✅ Blue kept for rollback"
-        echo ""
-        echo "✅ Blue-Green deployment successful!"
-    
-    - name: 🏥 Production Health Checks
-      run: |
-        echo "Running production health checks..."
-        echo ""
-        echo "Critical checks:"
-        echo "  ✅ Application responding"
-        echo "  ✅ Database connections healthy"
-        echo "  ✅ API endpoints operational"
-        echo "  ✅ SSL certificates valid"
-        echo "  ✅ Load balancer healthy"
-        echo "  ✅ CDN operational"
-        echo ""
-        echo "Performance metrics:"
-        echo "  ✅ Response time: 150ms (target: <200ms)"
-        echo "  ✅ Throughput: 1000 req/s"
-        echo "  ✅ Error rate: 0.01%"
-        echo "  ✅ CPU: 45%"
-        echo "  ✅ Memory: 60%"
-        echo ""
-        echo "All health checks passed! ✅"
-    
-    - name: 🧪 Production Smoke Tests
-      run: |
-        echo "Running production smoke tests..."
-        echo ""
-        echo "Critical path tests:"
-        echo "  ✅ User login"
-        echo "  ✅ Account creation"
-        echo "  ✅ Money transfer"
-        echo "  ✅ Transaction history"
-        echo "  ✅ Balance inquiry"
-        echo ""
-        echo "All production smoke tests passed! ✅"
-    
-    - name: 📊 Production Deployment Summary
-      run: |
-        VERSION=$(cat artifacts/build-metadata.json | jq -r '.version')
-        
-        cat > PRODUCTION_DEPLOYMENT.md << EOF
-        # Production Deployment Report
-        
-        ## Deployment Information
-        
-        - **Version:** ${VERSION}
-        - **Deployed At:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-        - **Deployed By:** GitHub Actions
-        - **Deployment Strategy:** Blue-Green
-        - **Status:** ✅ Successful
-        
-        ## Pre-Deployment Validation
-        
-        - ✅ All unit tests passed
-        - ✅ All integration tests passed
-        - ✅ Security scans clean (0 critical, 0 high)
-        - ✅ Code coverage above threshold
-        - ✅ Dev environment validated
-        - ✅ Staging environment validated
-        - ✅ Manual approval received
-        
-        ## Deployment Steps
-        
-        1. ✅ Deployed to Green environment
-        2. ✅ Health checks passed
-        3. ✅ Smoke tests passed
-        4. ✅ Traffic switched to Green
-        5. ✅ Blue environment kept for rollback
-        
-        ## Health Check Results
-        
-        | Metric | Status | Value |
-        |--------|--------|-------|
-        | Response Time | ✅ | 150ms |
-        | Throughput | ✅ | 1000 req/s |
-        | Error Rate | ✅ | 0.01% |
-        | CPU Usage | ✅ | 45% |
-        | Memory Usage | ✅ | 60% |
-        
-        ## Rollback Plan
-        
-        If issues detected:
-        1. Switch traffic back to Blue environment
-        2. Investigate issues in Green
-        3. Fix and redeploy
-        
-        Rollback command:
-        \`\`\`bash
-        # Switch traffic back to Blue
-        kubectl set image deployment/money-transfer money-transfer=money-transfer:blue
-        \`\`\`
-        
-        ## Monitoring
-        
-        - **Application:** https://money-transfer.com
-        - **Monitoring:** https://monitoring.money-transfer.com
-        - **Logs:** https://logs.money-transfer.com
-        - **Alerts:** Configured for error rate > 1%
-        
-        ## Support Contacts
-        
-        - **On-Call Engineer:** Available 24/7
-        - **DevOps Team:** #devops-alerts
-        - **Incident Response:** #incidents
-        
-        ---
-        
-        **Deployment completed successfully! 🎉**
-        EOF
-        
-        cat PRODUCTION_DEPLOYMENT.md
-        
-        echo ""
-        echo "=================================="
-        echo "🎉 PRODUCTION DEPLOYMENT COMPLETE!"
-        echo "=================================="
-        echo "Version: ${VERSION}"
-        echo "URL: https://money-transfer.com"
-        echo "Status: ✅ Live and Healthy"
-        echo "=================================="
-    
-    - name: 📤 Upload Deployment Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: production-deployment-report
-        path: PRODUCTION_DEPLOYMENT.md
-        retention-days: 365
-    
-    - name: 🎉 Deployment Success Notification
-      run: |
-        VERSION=$(cat artifacts/build-metadata.json | jq -r '.version')
-        
         echo "╔════════════════════════════════════════╗"
         echo "║                                        ║"
-        echo "║  🎉 DEPLOYMENT SUCCESSFUL! 🎉         ║"
+        echo "║  ✅ CI/CD PIPELINE COMPLETE!          ║"
         echo "║                                        ║"
         echo "╚════════════════════════════════════════╝"
         echo ""
-        echo "Version ${VERSION} is now live in Production!"
+        echo "All build, test, and packaging stages completed successfully."
+        echo "AWS Staging deployment will begin shortly..."
         echo ""
-        echo "🌟 All environments deployed:"
-        echo "   ✅ Development"
-        echo "   ✅ Staging"
-        echo "   ✅ Production"
-        echo ""
-        echo "📊 Pipeline Statistics:"
-        echo "   • Total Time: ~15-20 minutes"
-        echo "   • Jobs Executed: 11"
-        echo "   • Quality Gates: 100% Passed"
-        echo "   • Security Scans: Clean"
-        echo "   • Code Coverage: Above Threshold"
-        echo ""
-        echo "🔗 Quick Links:"
-        echo "   • Production: https://money-transfer.com"
-        echo "   • Staging: http://staging.money-transfer.local"
-        echo "   • Dev: http://dev.money-transfer.local"
-        echo ""
-        echo "Thank you for using this CI/CD pipeline! 🚀"
- 

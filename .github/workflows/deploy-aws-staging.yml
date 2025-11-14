@@ -18,6 +18,9 @@ jobs:
     name: 🏗️ Terraform Infrastructure
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    defaults:
+      run:
+        working-directory: ./money-transfer
     environment:
       name: staging
     
@@ -99,6 +102,9 @@ jobs:
     name: 🐳 Docker Push to ECR
     runs-on: ubuntu-latest
     needs: terraform-deploy
+    defaults:
+      run:
+        working-directory: ./money-transfer
     environment:
       name: staging
     
@@ -172,6 +178,9 @@ jobs:
     name: 🚀 Deploy to ECS
     runs-on: ubuntu-latest
     needs: [terraform-deploy, docker-push]
+    defaults:
+      run:
+        working-directory: ./money-transfer
     environment:
       name: staging
       url: ${{ needs.terraform-deploy.outputs.alb_url }}
@@ -238,6 +247,9 @@ jobs:
     name: 🏥 Health Check
     runs-on: ubuntu-latest
     needs: [terraform-deploy, ecs-deploy]
+    defaults:
+      run:
+        working-directory: ./money-transfer
     
     steps:
     - name: ⏳ Wait for Application Warmup
@@ -324,6 +336,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [terraform-deploy, docker-push, ecs-deploy, health-check]
     if: always()
+    defaults:
+      run:
+        working-directory: ./money-transfer
     
     steps:
     - name: 📊 Generate Deployment Report

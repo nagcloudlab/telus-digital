@@ -356,7 +356,6 @@ jobs:
   smoke-and-performance-tests:
     name: 🔥 Smoke & Performance Tests
     runs-on: ubuntu-latest
-    if: false
     needs: integration-tests
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
     defaults:

@@ -8,13 +8,15 @@ terraform {
     }
   }
   
-  backend "s3" {
-    bucket         = "money-transfer-terraform-state-us-east-1"
-    key            = "staging/terraform.tfstate"  # ← Changed from dev
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"
-  }
+  # BACKEND COMMENTED OUT FOR WORKSHOP
+  # Uncomment after creating S3 bucket if needed for production
+  # backend "s3" {
+  #   bucket         = "money-transfer-terraform-state-us-east-1"
+  #   key            = "staging/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
+  #   dynamodb_table = "terraform-state-lock"
+  # }
 }
 
 provider "aws" {
@@ -22,7 +24,7 @@ provider "aws" {
   
   default_tags {
     tags = {
-      Environment = "staging"  # ← Changed
+      Environment = "staging"
       Project     = "money-transfer"
       ManagedBy   = "terraform"
     }
@@ -31,7 +33,7 @@ provider "aws" {
 
 # VPC
 resource "aws_vpc" "main" {
-  cidr_block           = "10.1.0.0/16"  # ← Different CIDR
+  cidr_block           = "10.1.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
   
@@ -222,7 +224,7 @@ resource "aws_ecr_lifecycle_policy" "money_transfer" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 20 images"  # ← More than dev
+      description  = "Keep last 20 images"
       selection = {
         tagStatus     = "any"
         countType     = "imageCountMoreThan"
@@ -309,13 +311,13 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# RDS Instance (Larger than dev)
+# RDS Instance
 resource "aws_db_instance" "main" {
   identifier           = "money-transfer-staging"
   engine               = "postgres"
   engine_version       = "15.3"
-  instance_class       = "db.t3.small"  # ← Larger than dev
-  allocated_storage    = 50  # ← More storage
+  instance_class       = "db.t3.small"
+  allocated_storage    = 50
   storage_encrypted    = true
   
   db_name  = "moneytransfer"
@@ -325,11 +327,11 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   
-  backup_retention_period = 14  # ← Longer retention
+  backup_retention_period = 14
   backup_window          = "03:00-04:00"
   maintenance_window     = "mon:04:00-mon:05:00"
   
-  skip_final_snapshot = false  # ← Keep final snapshot
+  skip_final_snapshot       = false
   final_snapshot_identifier = "money-transfer-staging-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
   
   tags = {
@@ -354,7 +356,7 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 # CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/money-transfer-staging"
-  retention_in_days = 14  # ← Longer retention
+  retention_in_days = 14
   
   tags = {
     Environment = "staging"
@@ -431,8 +433,8 @@ resource "aws_ecs_task_definition" "app" {
   family                   = "money-transfer-staging"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "512"  # ← More CPU
-  memory                   = "1024"  # ← More memory
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
   
@@ -497,7 +499,7 @@ resource "aws_ecs_service" "app" {
   name            = "money-transfer-staging"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = 2  # ← High availability
+  desired_count   = 2
   launch_type     = "FARGATE"
   
   network_configuration {
